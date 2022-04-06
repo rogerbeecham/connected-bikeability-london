@@ -16,7 +16,7 @@ Beecham, R., Yang, Y., Tait, C. and Lovelace, R. _Connected bikeability in Londo
 * [data-processing.md](data-processing.md): R code for collecting and processing data underpinning the connected bikeability index:
   + London bikeshare OD trip data [from TfL](https://cycling.data.tfl.gov.uk/)
   + [CycleStreets routes](https://www.cyclestreets.net/) (via batch requests)
-  + Records from London's [Cycle Infrastructure Database](https://data.london.gov.uk/dataset/cycling-infrastructure-database)  
+  + Records from London's [Cycle Infrastructure Database](https://data.london.gov.uk/dataset/cycling-infrastructure-database) using the [CycleInfraLnd](https://github.com/PublicHealthDataGeek/CycleInfraLnd) package  
   + Ordnance Survey [Open Roads Data](https://www.ordnancesurvey.co.uk/business-government/products/open-map-roads)
 * [generate-index.md](generate-index.md): R code for extracting and transforming derived variables that form the bikeability index.
 * [generate-villages.md](generate-villages.md): R code for generating and storing our customised bikeshare villages -- the spatial unit for analysis.
