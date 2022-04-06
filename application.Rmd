@@ -10,7 +10,7 @@ This document describes code that underpins the applied data analysis detailed i
 
 Please cite:
 
-Beecham, R., Yang, Y., Tait, C. and Lovelace, R. _Connected bikeability in London: which localities are better connected by bike and does this matter?_. DOI: []().
+Beecham, R., Yang, Y., Tait, C. and Lovelace, R. _Connected bikeability in London: which localities are better connected by bike and does this matter?_. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Setup
 

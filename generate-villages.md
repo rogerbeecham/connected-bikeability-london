@@ -10,7 +10,7 @@ Please cite:
 
 Beecham, R., Yang, Y., Tait, C. and Lovelace, R. *Connected bikeability
 in London: which localities are better connected by bike and does this
-matter?*. DOI: []().
+matter?*. DOI: DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Setup
 

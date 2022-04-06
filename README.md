@@ -9,7 +9,7 @@ _Robin&nbsp;Lovelace ([r.lovelace@leeds.ac.uk](mailto:r.lovelace@leeds.ac.uk))_
 
 This repository contains supplementary materials for:
 
-Beecham, R., Yang, Y., Tait, C. and Lovelace, R. _Connected bikeability in London: which localities are better connected by bike and does this matter?_. DOI: []().
+Beecham, R., Yang, Y., Tait, C. and Lovelace, R. _Connected bikeability in London: which localities are better connected by bike and does this matter?_. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Repository contents
 
