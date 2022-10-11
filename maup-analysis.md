@@ -95,7 +95,7 @@ ggsave(filename=here("figs", "edge-stations.png"), plot=plot,width=8, height=5, 
 ggsave(filename=here("figs","edge-stations.svg"), plot=plot,width=8, height=5)  
 ```
 
-![Edge stations](./figs/edge-stations.svg)
+![](./figs/edge-stations.svg)
 
 For each of these edge stations we then need to identify neighbouring
 villages that may be candidates to which they could have been
@@ -129,11 +129,7 @@ ggsave(filename=here("figs", "bh-villages.png"), plot=plot,width=6, height=5, dp
 ggsave(filename=here("figs","bh-villages.svg"), plot=plot,width=6, height=5) 
 ```
 
-<figure>
-<img src="./figs/bh-villages.svg" style="width:60.0%"
-alt="Broadcasting House" />
-<figcaption aria-hidden="true">Broadcasting House</figcaption>
-</figure>
+<img src="./figs/bh-villages.svg" style="width:50.0%" />
 
 Next we want to calculate the distance between this docking station and
 the closest part of the boundary of its neighbours. This is to make sure
@@ -180,12 +176,7 @@ ggsave(filename=here("figs", "bh-neighbours.png"), plot=plot,width=7, height=5, 
 ggsave(filename=here("figs","bh-neighbours.svg"), plot=plot,width=7, height=5) 
 ```
 
-<figure>
-<img src="./figs/bh-neighbours.svg" style="width:60.0%"
-alt="Broadcasting House and neighbours" />
-<figcaption aria-hidden="true">Broadcasting House and
-neighbours</figcaption>
-</figure>
+<img src="./figs/bh-neighbours.svg" style="width:50.0%" />
 
 ## Reallocate stochastically
 
@@ -220,12 +211,7 @@ anim <- bh_animate |>
 gganimate::animate(nframes=210, fps=20, anim, start_pause=0, end_pause=10, width=800, height=600, res=150, renderer=gganimate::gifski_renderer(here("figs", "anim_bh.gif")))
 ```
 
-<figure>
-<img src="./figs/anim_bh.gif" style="width:60.0%"
-alt="Stochastic reassignment of BH to neighbours" />
-<figcaption aria-hidden="true">Stochastic reassignment of BH to
-neighbours</figcaption>
-</figure>
+<img src="./figs/anim_bh.gif" style="width:50.0%" />
 
 ## Apply to full dataset
 
@@ -376,5 +362,4 @@ anim_count_map <- iterations |>
 gganimate::animate(nframes=210, fps=20, anim_count_map, start_pause=0,end_pause=10, width=1100, height=700, res=150, renderer=gganimate::gifski_renderer(here("figs", "anim_zoning.gif")))
 ```
 
-![Hypothetical outcome plot simulating zoning effects on bikeshare trip
-counts](./figs/anim_zoning.gif)
+![](./figs/anim_zoning.gif)

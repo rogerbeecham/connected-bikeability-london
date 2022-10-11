@@ -113,7 +113,7 @@ ggsave(filename=here("figs", "bh-villages.png"), plot=plot,width=6, height=5, dp
 ggsave(filename=here("figs","bh-villages.svg"), plot=plot,width=6, height=5) 
 ```
 
-![](./figs/bh-villages.svg){width=60%}
+![](./figs/bh-villages.svg){width=50%}
 
 Next we want to calculate the distance between this docking station and the closest part of the boundary of its neighbours. This is to make sure that this distance crosses over into neighbouing villages. Therefore we caluclate this based on the villages_scaled data. We also decide on a reasonable distance threshold, 500 metres, beyond which it would not make sense to reallocate due to boundary effects.
 
@@ -155,7 +155,7 @@ ggsave(filename=here("figs", "bh-neighbours.png"), plot=plot,width=7, height=5, 
 ggsave(filename=here("figs","bh-neighbours.svg"), plot=plot,width=7, height=5) 
 ```
 
-![](./figs/bh-neighbours.svg){width=60%}
+![](./figs/bh-neighbours.svg){width=50%}
 
 ## Reallocate stochastically
 
@@ -188,7 +188,7 @@ anim <- bh_animate |>
 gganimate::animate(nframes=210, fps=20, anim, start_pause=0, end_pause=10, width=800, height=600, res=150, renderer=gganimate::gifski_renderer(here("figs", "anim_bh.gif")))
 ```
 
-![](./figs/anim_bh.gif){width=60%}
+![](./figs/anim_bh.gif){width=50%}
 
 ## Apply to full dataset   
 

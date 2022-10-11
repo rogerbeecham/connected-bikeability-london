@@ -21,11 +21,15 @@ village pair combinations, but some of those OD village pairs will be
 unlikely to be made, for various substantive reasons.
 
 To partially adjust for these, we set up a regression model exploring
-how OD bikeability (outcome) varies by
-`commuter' bikeshare trip counts (those occurring at peak times), with further terms added to adjust for the fact that commuter demand will vary depending on where jobs and workers are located within the scheme's bounds (travel-to-work data from 2011 Census is added as an explanatory variable); and a random intecept term added on whether the village covers key`hub’
-docking stations located at rail terminals and which are manually
-replenished with bikes at key times. Finally, only OD pairs into
-villages that are frequently cycled (top 250 OD village pairs) are used.
+how OD bikeability (outcome) varies by ‘commuter’ bikeshare trip counts
+(those occurring at peak times), with further terms added to adjust for
+the fact that commuter demand will vary depending on where jobs and
+workers are located within the scheme’s bounds (travel-to-work data from
+2011 Census is added as an explanatory variable); and a random intecept
+term added on whether the village covers key ‘hub’ docking stations
+located at rail terminals and which are manually replenished with bikes
+at key times. Finally, only OD pairs into villages that are frequently
+cycled (top 250 OD village pairs) are used.
 
 Please cite:
 
