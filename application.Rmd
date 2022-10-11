@@ -59,7 +59,7 @@ Next we identify all MSOAs that intersect with the LCHS boundary and filter the 
 
 ```{r, match-msoas, eval=FALSE}
 # Read in villages.
-geid_real_sf <- st_read(here("data","grid_real_sf.geojson"))
+grid_real_sf <- st_read(here("data","grid_real_sf.geojson"))
 
 # Buffer around bikeshare scheme villages.
 temp_buffer <- grid_real_sf %>% filter(type=="real") %>%
