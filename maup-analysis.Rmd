@@ -39,8 +39,6 @@ Load in the bikeshare villages dataset, docking-station-level OD datasets (trips
 ```{r, eval=FALSE}
 # Read in villages.
 villages <- st_read(here("data", "grid_real_sf.geojson"))
-# Read in OD bikeability scores.
-bikeability <- read_csv(here("data", "connected_bikeability_index.csv"))
 
 # Read in bikeshare trip data : docking-station>docking-station
 bs_data <- fst::read_fst(here("data", "trips_df_all.fst")) |> 
@@ -48,7 +46,28 @@ bs_data <- fst::read_fst(here("data", "trips_df_all.fst")) |>
   filter(year(start_time)==2018)
 
 # Load stations data.
-stations <-  st_read(here("data", "stations.geojson")) 
+bike_stations <-  st_read(here("data", "bike_stations.geojson")) |> st_transform(crs=27700)
+# Join on villages.
+bike_stations  <- bike_stations |> st_join(villages %>% filter(type=="real") %>%  select(village=name), .predicate=st_intersects())
+# Stations coords 
+bike_stations_coords <- bike_stations |> st_centroid() |> st_coordinates() |> as_tibble() |> rename_all(tolower)
+bike_stations <- bind_cols(bike_stations, bike_stations_coords) 
+
+# Read in OD bikeability scores.
+bikeability <- read_csv(here("data", "connected_bikeability_index.csv")) |> 
+  left_join(
+    bike_stations |> st_drop_geometry() |> select(ucl_id,village), by=c("start_station_id"="ucl_id")
+    ) |> rename(o_village=village) |> 
+  left_join(
+    bike_stations |> st_drop_geometry() |> select(ucl_id,village), by=c("end_station_id"="ucl_id")
+    ) |> rename(d_village=village) |>  
+# Add straight line distances.
+  left_join(bike_stations |> st_drop_geometry() |> select(ucl_id, o_x=x, o_y=y),
+              by=c("start_station_id"="ucl_id")) |> 
+  left_join(bike_stations |> st_drop_geometry() |> select(ucl_id, d_x=x, d_y=y),
+              by=c("end_station_id"="ucl_id")) |> 
+  mutate(dist_straight= sqrt( ((o_x-d_x)^2) + ((o_y-d_y)^2) ) ) |> 
+  filter(o_village != d_village, dist_straight>500)
 ```
 
 ## Identify edge stations and their neighbours  
@@ -192,8 +211,7 @@ gganimate::animate(nframes=210, fps=20, anim, start_pause=0, end_pause=10, width
 
 ## Apply to full dataset   
 
-So first we build up a dataset where for each edge station (`outside_station`) geometries for their
-village neighbours are stored, both the original and rescaled geometries.
+So first we build up a dataset where for each edge station (`outside_station`) geometries for their village neighbours are stored, both the original and rescaled geometries.
 
 ```{r, eval=FALSE}
 temp_outside_stations <- stations_outside |> st_join(villages_real |> select(name)) 
@@ -247,7 +265,7 @@ Again there is a stochastic, Monte Carlo-type, approach to resampling villages o
 temp_resampled_dat <- temp_outside_station_neighbours |> 
   mutate(
     dat=map(dists, 
-            ~.x |> filter(dist<500) |> mutate(w=(1/dist), prop=round((w/sum(w)*100))) |>
+            ~.x |> filter(dist<500) |> mutate(w=(1/sqrt(dist)), prop=round((w/sum(w)*100))) |>
               select(name, prop) |> st_drop_geometry()),
     resamples=
       map(dat,
@@ -262,7 +280,7 @@ temp_resampled_dat <- temp_outside_station_neighbours |>
   
 stations_inside <- stations |>  
   st_join(villages_real |> select(name)) |> st_drop_geometry() |>  
-  filter(!operator_name %in% (temp_resampled_dat$operator_name |> unique())) |> select(-id, village=name) |> unique() |> 
+  filter(!operator_name %in% (temp_resampled_dat$operator_name |> unique())) |> select(-ucl_id, village=name) |> unique() |> 
   nest(data=village) |> 
   mutate(
     relocate=map(data, ~rep(.x$village,times=100))
@@ -273,41 +291,61 @@ stations_inside <- stations |>
   ungroup()
 
 resampled_dat <- bind_rows(temp_resampled_dat, stations_inside) |> 
-  inner_join(stations |> st_drop_geometry() |> group_by(operator_name) |> summarise(id=first(id)) |> ungroup())
+  inner_join(stations |> st_drop_geometry() |> group_by(operator_name) |> summarise(id=first(ucl_id)) |> ungroup())
 ```
 
 For each docking-station OD pair, we generate 100 simulated datasets with the edge docking stations reassigned to neighbouring villages probabilistically.  
 
 ```{r, eval=FALSE}
-get_resampled_dat <- function(boot_id, trip_dat, resampled) {
-  dat <- trip_dat |> 
+get_resampled_dat <- function(boot_id, dat, resampled) {
+  dat <- dat |> 
     inner_join(resampled |> filter(boot_id==!!boot_id) |> select(id, o_village=relocate), by=c("start_station_id"="id")) |> 
   left_join(resampled |> filter(boot_id==!!boot_id) |> select(id, d_village=relocate), by=c("end_station_id"="id")) |> 
+    filter(o_village!=d_village) |> 
     group_by(o_village, d_village) |> 
-    summarise(count=sum(count)) |> ungroup() |> mutate(boot_id=!!boot_id)
+    summarise(index=mean(index)) |> ungroup() |> mutate(boot_id=!!boot_id)
   return(dat)
 }
 
 simulated_data <- bind_rows(
   map(1:100, 
-      ~get_resampled_dat(boot_id=quo(.x), trip_dat=bs_data_ods, resampled=resampled_dat |> select(relocate,id, boot_id))
+      ~get_resampled_dat(
+        boot_id=quo(.x), 
+        dat=bikeability |> 
+          mutate(
+            across(
+              .cols=c(start_station_id, end_station_id),
+              .fns=~as.character(.x)
+              )
+            ) |> 
+          select(start_station_id, end_station_id, index=cb_index),
+        resampled=resampled_dat |> mutate(id=as.character(id)) |>   select(relocate,id, boot_id))
   )
 )
+
+write_csv(simulated_data, here("data", "simulated_data2.csv"))
 ``` 
 
-Animate over the simulated data to generate a hypothetical outcome plot [https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0142444](Hullman et al. 2015)  of candidate maps, in so doing we experience uncertainty due to zoning effects.
+Animate over the simulated data to generate a  [Hullman et al. 2015](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0142444)  of candidate maps, in so doing we experience uncertainty due to zoning effects.
 
 ```{r, eval=FALSE}
-anim_count_map <- iterations |> 
+ods_full <- tibble(
+  o_village=rep(rep(villages |> filter(type=="real") |> pull(name), times=66), times=100),
+  d_village=rep(rep(villages |> filter(type=="real") |> pull(name), times=1, each=66), times=100),
+  boot_id=rep(1:100, times=66, each=66)
+)
+
+temp_anim_data <- simulated_data |> 
   mutate(label=d_village) |> 
-  filter(d_village=="Westminster") |> 
-  left_join(villages_real, by=c("o_village"="name")) |> st_as_sf() |> 
+  right_join(ods_full |> left_join(villages_real, by=c("o_village"="name"))) |> st_as_sf() |> filter(d_village=="Westminster") 
+
+anim_index_map  <- temp_anim_data |> 
   ggplot()+
-  geom_sf(data= . %>% group_by(boot_id) %>% summarise(), colour="#616161", fill="transparent", size=0.65)+
-  geom_sf(aes(fill=count^.7), colour="#616161", size=0.3)+
+ geom_sf(data= . %>% group_by(boot_id) %>% summarise(), colour="#616161", fill="transparent", size=0.65)+
+  geom_sf(aes(fill=index), colour="#616161", size=0.3)+
   geom_sf(data=. %>%  filter(o_village==d_village), 
             colour="#616161", fill="transparent", size=0.65) +
-  geom_text(data= . %>%  filter(o_village==d_village), 
+  geom_text(data= .  %>%  filter(o_village==d_village), 
             aes(x=east, y=north, label=str_sub(d_village,1,1)), 
             colour="#252525", alpha=0.9, size=4, show.legend=FALSE, 
             hjust="centre", vjust="middle", family="Avenir Book")+
@@ -324,8 +362,7 @@ anim_count_map <- iterations |>
     axis.title.x=element_blank(),axis.title.y=element_blank(),
     panel.background = element_rect(fill="#ffffff", colour="#ffffff"),
   ) 
-
-gganimate::animate(nframes=210, fps=20, anim_count_map, start_pause=0,end_pause=10, width=1100, height=700, res=150, renderer=gganimate::gifski_renderer(here("figs", "anim_zoning.gif")))
+gganimate::animate(nframes=210, fps=20, anim_index_map, start_pause=0,end_pause=10, width=1100, height=700, res=150, renderer=gganimate::gifski_renderer(here("figs", "anim_zoning.gif")))
 ```
 
 ![](./figs/anim_zoning.gif)

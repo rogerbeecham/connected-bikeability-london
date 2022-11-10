@@ -264,7 +264,7 @@ In our implementation the large grid squares are bikeshare villages with an appr
 visually salient, allowing detailed patterns in connected bikeability to be analysed concurrently.
 
 
-![OD map of connected bikeability](./figs/index.svg)
+![OD map of connected bikeability](./figs/index.png)
 
 
 To demonstrate the relative benefits of the OD-map layout, we can compare with a typical flow visualization with lines sized and coloured according to bikeabillity, also 'optimised' to try to reduce the hairball effect.
