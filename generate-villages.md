@@ -10,7 +10,7 @@ Please cite:
 
 Beecham, R., Yang, Y., Tait, C. and Lovelace, R. *Connected bikeability
 in London: which localities are better connected by bike and does this
-matter?*. DOI: DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
+matter?*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Setup
 
@@ -162,7 +162,7 @@ villages_grid <- read_tsv(here("data", "villages_grid_agg.tsv"))
 
 To plot villages using the semi-spatial arrangement we need to construct
 geometries representing the grid. To do this generate a grid over the
-villages according to the dimensions of the smwg layout – 14*x*9.
+villages according to the dimensions of the smwg layout – $14x9$.
 
 ``` r
 # Make sf grid object over localities.
@@ -271,12 +271,11 @@ gganimate::animate(
 ## OD maps
 
 We generate estimates of bikeability for journeys made between all
-bikeshare villages – up to 66<sup>2</sup> (4,326) OD village-village
-pairs. Although the bikeshare villages offer a degree of aggregation,
-inferring geographic structure with this number of pairs using {de
-facto} flow visualizations is challenging. Problems of clutter and
-salience bias hinder meaningful analysis. OD maps are one alternative
-([Wood et
+bikeshare villages – up to $66^2$ (4,326) OD village-village pairs.
+Although the bikeshare villages offer a degree of aggregation, inferring
+geographic structure with this number of pairs using {de facto} flow
+visualizations is challenging. Problems of clutter and salience bias
+hinder meaningful analysis. OD maps are one alternative ([Wood et
 al. 2010](https://www.tandfonline.com/doi/abs/10.1179/000870410X12658023467367)).
 They are essentially origin-destination matrices, but where the cells
 are given a two-level geographic arrangement using a map-within-map
@@ -292,7 +291,7 @@ interest – bikeability scores in the maps below. This means that each
 village–village OD pair is roughly equally visually salient, allowing
 detailed patterns in connected bikeability to be analysed concurrently.
 
-![OD map of connected bikeability](./figs/index.svg)
+![OD map of connected bikeability](./figs/index.png)
 
 To demonstrate the relative benefits of the OD-map layout, we can
 compare with a typical flow visualization with lines sized and coloured
