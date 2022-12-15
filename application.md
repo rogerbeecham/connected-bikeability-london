@@ -9,9 +9,10 @@ our connected bikeability scores.
 
 Please cite:
 
-Beecham, R., Yang, Y., Tait, C. and Lovelace, R. *Connected bikeability
-in London: which localities are better connected by bike and does this
-matter?*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
+Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) “Connected
+bikeability in London: which localities are better connected by bike and
+does this matter?”, *Environment & Planning B: Urban Analytics and City
+Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Setup
 
@@ -237,14 +238,14 @@ ods_prof <- prof_points %>% select(-c(od_pair,o_msoa, d_msoa)) %>%
   group_by(o_village, d_village) %>%
   summarise(count=n())
 
-ods_joined <- 
-  ods_prof %>% rename(prof=count) %>% 
-  full_join(ods_non_prof %>% rename(non_prof=count)) %>% 
-  group_by(d_village) %>% 
+ods_joined <-
+  ods_prof %>% rename(prof=count) %>%
+  full_join(ods_non_prof %>% rename(non_prof=count)) %>%
+  group_by(d_village) %>%
   mutate(
     expected=((prof+non_prof+0.0001)*(sum(prof, na.rm=TRUE)+0.0001))/(sum(prof, na.rm=TRUE)+sum(non_prof, na.rm=TRUE)+0.0001),
     pearson=(prof-expected)/(sqrt(expected))) %>%
-  ungroup() 
+  ungroup()
 
 write_csv(ods_joined, here("data", "ods_joined.csv"))
 ```
@@ -266,46 +267,46 @@ plot_data_temp <- grid_real_sf %>% filter(type=="real") %>%
     ods_full %>% left_join(ods_joined),
     ods_joined, by=c("name"="o_village")) %>%
   mutate(o_village=name) %>% rename(o_x=x, o_y=y) %>%
-  left_join(grid_real_sf %>% filter(type=="grid") %>% st_drop_geometry() %>% 
+  left_join(grid_real_sf %>% filter(type=="grid") %>% st_drop_geometry() %>%
               select(name,x,y), by=c("d_village"="name")
   ) %>%
   rename(d_x=x, d_y=y) %>%
   # Identify village in focus (edit this to switch between D-OD and O-DO matrix).
   mutate(label=if_else(o_village==d_village,d_village,""),
-         focus=if_else(o_village==d_village,1,0)) |> 
+         focus=if_else(o_village==d_village,1,0)) |>
   mutate(commute_count=prof+non_prof)
 
 # Correlation with bikeability
-plot_data_temp |> st_drop_geometry() |> 
-  left_join(simulated_data) |>  
+plot_data_temp |> st_drop_geometry() |>
+  left_join(simulated_data) |>
   mutate(
     index=if_else(is.na(index),0,index),
     prof=if_else(is.na(prof),0,as.double(prof)),
     non_prof=if_else(is.na(non_prof),0,as.double(non_prof)),
     commute_count=if_else(is.na(commute_count),0,as.double(commute_count))
     ) |>
-  group_by(d_village) |> 
+  group_by(d_village) |>
   summarise(prof=cor(x=prof, y=index), non_prof=cor(x=non_prof, y=index), diff=prof-non_prof, jobs=sum(commute_count), all=cor(x=commute_count, y=index), pears=cor(x=pearson, y=index, na.rm=TRUE))
 
 
-bikeability <- plot_data_temp |> 
-  left_join(simulated_data) |> 
-  
-  filter(d_village %in% c("Covent Garden | Strand")) |> 
-  
+bikeability <- plot_data_temp |>
+  left_join(simulated_data) |>
+
+  filter(d_village %in% c("Covent Garden | Strand")) |>
+
   ggplot() +
   geom_sf(data= villages_real %>% summarise(), colour="#616161", fill="transparent", size=.4)+
   geom_sf(aes(fill=index), colour="#ffffff", size=.05)+
   #geom_sf(data= villages_real, fill="transparent", colour="#ffffff", size=.05)+
   geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.1)+
    geom_sf(data=infra_scheme, colour="#252525", alpha=.9, size=.2) +
-  geom_sf(data=temp_rivers %>% filter(name=="Covent Garden | Strand"), size=0, fill="#bdbdbd", alpha=1)+ 
- 
-  geom_text(data=. %>% filter(focus==1), 
-            aes(x=east, y=north, label=str_sub(label,1,1)), 
-            colour="#252525", alpha=0.9, size=4, show.legend=FALSE, 
+  geom_sf(data=temp_rivers %>% filter(name=="Covent Garden | Strand"), size=0, fill="#bdbdbd", alpha=1)+
+
+  geom_text(data=. %>% filter(focus==1),
+            aes(x=east, y=north, label=str_sub(label,1,1)),
+            colour="#252525", alpha=0.9, size=4, show.legend=FALSE,
             hjust="centre", vjust="middle", family="Avenir Next")+
-  
+
   scale_fill_distiller(palette="PuBu", direction=1, na.value="#f7f7f7") +
   labs(subtitle="bikeability") +
   guides(fill="none")+
@@ -315,27 +316,27 @@ bikeability <- plot_data_temp |>
       legend.key.size = unit(.45, 'cm'),
       legend.title = element_text(size=12),
       legend.text = element_blank()
-    ) 
+    )
 
 
-jobs <- plot_data_temp |> 
-  left_join(simulated_data) |> 
-  
-  filter(d_village %in% c("Covent Garden | Strand")) |> 
-  
+jobs <- plot_data_temp |>
+  left_join(simulated_data) |>
+
+  filter(d_village %in% c("Covent Garden | Strand")) |>
+
   ggplot() +
   geom_sf(data= villages_real %>% summarise(), colour="#616161", fill="transparent", size=.4)+
   geom_sf(aes(fill=commute_count), colour="#ffffff", size=.05)+
   #geom_sf(data= villages_real, fill="transparent", colour="#ffffff", size=.05)+
   geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.1)+
    geom_sf(data=infra_scheme, colour="#252525", alpha=.9, size=.2) +
-  geom_sf(data=temp_rivers %>% filter(name=="Bank"), size=0, fill="#bdbdbd", alpha=1)+ 
- 
-  geom_text(data=. %>% filter(focus==1), 
-            aes(x=east, y=north, label=str_sub(label,1,1)), 
-            colour="#252525", alpha=0.9, size=4, show.legend=FALSE, 
+  geom_sf(data=temp_rivers %>% filter(name=="Bank"), size=0, fill="#bdbdbd", alpha=1)+
+
+  geom_text(data=. %>% filter(focus==1),
+            aes(x=east, y=north, label=str_sub(label,1,1)),
+            colour="#252525", alpha=0.9, size=4, show.legend=FALSE,
             hjust="centre", vjust="middle", family="Avenir Next")+
-  
+
   scale_fill_distiller(palette="PuBu", direction=1, na.value="#f7f7f7") +
   labs(subtitle="commute counts") +
   guides(fill="none")+
@@ -345,29 +346,29 @@ jobs <- plot_data_temp |>
       legend.key.size = unit(.45, 'cm'),
       legend.title = element_text(size=12),
       legend.text = element_blank()
-    ) 
+    )
 
-pearson <- plot_data_temp |> 
-  left_join(simulated_data) |> 
-  
-  filter(d_village %in% c("Covent Garden | Strand")) |> 
-  
+pearson <- plot_data_temp |>
+  left_join(simulated_data) |>
+
+  filter(d_village %in% c("Covent Garden | Strand")) |>
+
   ggplot() +
   geom_sf(data= villages_real %>% summarise(), colour="#616161", fill="transparent", size=.4)+
   geom_sf(aes(fill=pearson), colour="#ffffff", size=.05)+
   #geom_sf(data= villages_real, fill="transparent", colour="#ffffff", size=.05)+
   geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.1)+
    geom_sf(data=infra_scheme, colour="#252525", alpha=.9, size=.2) +
-  geom_sf(data=temp_rivers %>% filter(name=="Bank"), size=0, fill="#bdbdbd", alpha=1)+ 
- 
-  geom_text(data=. %>% filter(focus==1), 
-            aes(x=east, y=north, label=str_sub(label,1,1)), 
-            colour="#252525", alpha=0.9, size=4, show.legend=FALSE, 
+  geom_sf(data=temp_rivers %>% filter(name=="Bank"), size=0, fill="#bdbdbd", alpha=1)+
+
+  geom_text(data=. %>% filter(focus==1),
+            aes(x=east, y=north, label=str_sub(label,1,1)),
+            colour="#252525", alpha=0.9, size=4, show.legend=FALSE,
             hjust="centre", vjust="middle", family="Avenir Next")+
-  
+
   scale_fill_distiller(
-    palette="PuOr", direction=1, 
-    limits=c(-max(abs(plot_data_temp$pearson)),max(abs(plot_data_temp$pearson))), 
+    palette="PuOr", direction=1,
+    limits=c(-max(abs(plot_data_temp$pearson)),max(abs(plot_data_temp$pearson))),
     guide = "colourbar", na.value="#f7f7f7"
     )+
   labs(subtitle="signed chi-scores") +
@@ -378,15 +379,15 @@ pearson <- plot_data_temp |>
       legend.key.size = unit(.45, 'cm'),
       legend.title = element_text(size=12),
       legend.text = element_blank()
-    ) 
+    )
 
-count_hist <- plot_data_temp %>% 
+count_hist <- plot_data_temp %>%
   filter(d_village %in% c("Covent Garden | Strand")) %>%
-  ggplot(aes(commute_count)) + 
-  geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) + 
+  ggplot(aes(commute_count)) +
+  geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) +
   scale_fill_distiller(
-    palette="PuBu", direction=1, 
-    limits=c(-max(abs(plot_data_temp$commute_count)),max(abs(plot_data_temp$commute_count))), 
+    palette="PuBu", direction=1,
+    limits=c(-max(abs(plot_data_temp$commute_count)),max(abs(plot_data_temp$commute_count))),
     guide = "none", na.value="#f7f7f7"
   )+
   facet_wrap(~d_village, nrow=2) +
@@ -399,14 +400,14 @@ count_hist <- plot_data_temp %>%
   )
 
 
-diff_hist <- plot_data_temp %>% 
+diff_hist <- plot_data_temp %>%
   filter(d_village %in% c("Covent Garden | Strand")) %>%
-  filter(o_village!=d_village) |> 
-  ggplot(aes(pearson)) + 
-  geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) + 
+  filter(o_village!=d_village) |>
+  ggplot(aes(pearson)) +
+  geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) +
   scale_fill_distiller(
-    palette="PuOr", direction=1, 
-    limits=c(-max(abs(plot_data_temp$pearson)),max(abs(plot_data_temp$pearson))), 
+    palette="PuOr", direction=1,
+    limits=c(-max(abs(plot_data_temp$pearson)),max(abs(plot_data_temp$pearson))),
     guide = "none", na.value="#f7f7f7"
   )+
   theme(
@@ -419,12 +420,12 @@ diff_hist <- plot_data_temp %>%
 index_hist <- plot_data_temp %>%
   left_join(simulated_data) |>
   filter(d_village %in% c("Covent Garden | Strand")) %>%
-  filter(o_village!=d_village) |> 
-  ggplot(aes(index)) + 
-  geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) + 
+  filter(o_village!=d_village) |>
+  ggplot(aes(index)) +
+  geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) +
   scale_fill_distiller(
-    palette="PuBu", direction=1, 
-    limits=c(max_index$min,max_index$max+.001), 
+    palette="PuBu", direction=1,
+    limits=c(max_index$min,max_index$max+.001),
     guide = "none", na.value="#f7f7f7"
   )+
   facet_wrap(~d_village, nrow=2) +
@@ -436,10 +437,10 @@ index_hist <- plot_data_temp %>%
     panel.background = element_rect(fill="#ffffff", colour="#ffffff")
   )
 
-max_index <- plot_data_temp %>% 
-  left_join(simulated_data) |> 
-  filter(d_village %in% c("Covent Garden | Strand")) |> 
-  filter(o_village!=d_village) |> 
+max_index <- plot_data_temp %>%
+  left_join(simulated_data) |>
+  filter(d_village %in% c("Covent Garden | Strand")) |>
+  filter(o_village!=d_village) |>
   summarise(max=max(index), min=min(index)) |> st_drop_geometry()
 
 

@@ -10,7 +10,7 @@ This document describes how bikeshare villages -- the spatial unit of analysis c
 
 Please cite:
 
-Beecham, R., Yang, Y., Tait, C. and Lovelace, R. _Connected bikeability in London: which localities are better connected by bike and does this matter?_. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
+Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) "Connected bikeability in London: which localities are better connected by bike and does this matter?", *Environment & Planning B: Urban Analytics and City Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Setup
 
@@ -174,7 +174,7 @@ for(i in 0:height-1) {
     index=1+((i)*width+j)
     y[index] <- i
     y[index] <- map_scale(i,0,height-1,height-1,0)
-  }  
+  }
 }
 
 x <- rep(0:width-1,height)
@@ -184,7 +184,7 @@ for(i in 0:height-1) {
     index=1+((i)*14+j)
     y[index] <- i
     y[index] <- map_scale(i,0,height-1,height-1,0)
-  }  
+  }
 }
 
 # Add to grid_sf and then join on villages_grid to filter only
@@ -295,9 +295,9 @@ temp_ods <- grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
   select(destination=name)
 temp_ods <- temp_ods %>%
   mutate(origin=list(temp_ods %>% pull(destination))) %>%
-  unnest(cols=origin)  
+  unnest(cols=origin)
 
-plot_data_temp <- grid_real_sf %>% filter(type=="real") %>%  
+plot_data_temp <- grid_real_sf %>% filter(type=="real") %>%
   rename(origin=name, o_x=x, o_y=y) %>%
   right_join(temp_ods, by=c("origin"="origin")) %>%
   left_join(grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
@@ -392,7 +392,7 @@ bbox_grid <- st_bbox(grid_real_sf %>% filter(type=="real"))
 # Rivers.
 temp <- plot_data_temp %>%
   filter(focus==1) %>%
-  st_drop_geometry() %>%  
+  st_drop_geometry() %>%
   mutate(geometry=rivers$geometry) %>%
   st_as_sf(sf_column_name = "geometry")
 

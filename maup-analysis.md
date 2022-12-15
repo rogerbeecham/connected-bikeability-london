@@ -9,11 +9,10 @@ docking stations to villages.
 
 Please cite:
 
-Beecham, R., Yang, Y., Tait, C. and Lovelace, R. *Connected bikeability
-in London: which localities are better connected by bike and does this
-matter?*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
-
-## Setup
+Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) “Connected
+bikeability in London: which localities are better connected by bike and
+does this matter?”, *Environment & Planning B: Urban Analytics and City
+Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8). \## Setup
 
 ### Required libraries
 
@@ -47,9 +46,7 @@ datasets (trips, bikeability), and docking stations data.
 villages <- st_read(here("data", "grid_real_sf.geojson"))
 
 # Read in bikeshare trip data : docking-station>docking-station
-bs_data <- fst::read_fst(here("data", "trips_df_all.fst")) |>
-  # All trips in 2018.
-  filter(year(start_time)==2018)
+bs_data <- fst::read_fst(here("data", "trips_2018.fst"))
 
 # Load stations data.
 bike_stations <-  st_read(here("data", "bike_stations.geojson")) |> st_transform(crs=27700)
@@ -355,7 +352,7 @@ simulated_data <- bind_rows(
   )
 )
 
-write_csv(simulated_data, here("data", "simulated_data2.csv"))
+write_csv(simulated_data, here("data", "simulated_data.csv"))
 ```
 
 Animate over the simulated data to generate a [Hullman et

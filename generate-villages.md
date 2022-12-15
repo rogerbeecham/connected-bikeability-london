@@ -8,9 +8,10 @@ analysis customised for connected bikeability – was generated.
 
 Please cite:
 
-Beecham, R., Yang, Y., Tait, C. and Lovelace, R. *Connected bikeability
-in London: which localities are better connected by bike and does this
-matter?*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
+Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) “Connected
+bikeability in London: which localities are better connected by bike and
+does this matter?”, *Environment & Planning B: Urban Analytics and City
+Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Setup
 
@@ -191,7 +192,7 @@ for(i in 0:height-1) {
     index=1+((i)*width+j)
     y[index] <- i
     y[index] <- map_scale(i,0,height-1,height-1,0)
-  }  
+  }
 }
 
 x <- rep(0:width-1,height)
@@ -201,7 +202,7 @@ for(i in 0:height-1) {
     index=1+((i)*14+j)
     y[index] <- i
     y[index] <- map_scale(i,0,height-1,height-1,0)
-  }  
+  }
 }
 
 # Add to grid_sf and then join on villages_grid to filter only

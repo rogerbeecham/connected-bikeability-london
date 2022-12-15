@@ -42,9 +42,10 @@ context of London’s dedicated cycling infrastructure.
 
 Please cite:
 
-Beecham, R., Yang, Y., Tait, C. and Lovelace, R. *Connected bikeability
-in London: which localities are better connected by bike and does this
-matter?*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
+Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) “Connected
+bikeability in London: which localities are better connected by bike and
+does this matter?”, *Environment & Planning B: Urban Analytics and City
+Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
 
 ## Setup
 
@@ -63,10 +64,10 @@ pkgs <- c("tidyverse","sf", "here")
 # Core packages
 library(here)
 library(patchwork)
-library(tidyverse)              
+library(tidyverse)
 library(lubridate)
 
-library(sf)    
+library(sf)
 library(geosphere)
 
 library(tidymodels)
@@ -108,44 +109,44 @@ temp <- temp %>% rmapshaper::ms_simplify(keep=.1)
 temp <- temp %>% st_transform(crs=27700)
 
 # Read in bikeshare trip data : docking-station>docking-station
-bs_data <- fst::read_fst(here("data", "trips_2018.fst")) 
+bs_data <- fst::read_fst(here("data", "trips_2018.fst"))
 # Load stations data.
 bike_stations <-  st_read(here("data", "bike_stations.geojson")) |> st_transform(crs=27700)
 # Join on villages.
 bike_stations  <- bike_stations |> st_join(villages %>% filter(type=="real") %>%  select(village=name), .predicate=st_intersects())
-# Stations coords 
+# Stations coords
 bike_stations_coords <- bike_stations |> st_centroid() |> st_coordinates() |> as_tibble() |> rename_all(tolower)
-bike_stations <- bind_cols(bike_stations, bike_stations_coords) 
+bike_stations <- bind_cols(bike_stations, bike_stations_coords)
 
 # Load stations data.
 service_pressure <- read_csv(here("data", "service_pressure.csv"))
 
 # Read in OD bikeability scores.
-bikeability <- read_csv(here("data", "connected_bikeability_index_od_level.csv")) |> 
+bikeability <- read_csv(here("data", "connected_bikeability_index_od_level.csv")) |>
   left_join(
     bike_stations |> st_drop_geometry() |> select(ucl_id,village), by=c("start_station_id"="ucl_id")
-    ) |> rename(o_village=village) |> 
+    ) |> rename(o_village=village) |>
   left_join(
     bike_stations |> st_drop_geometry() |> select(ucl_id,village), by=c("end_station_id"="ucl_id")
-    ) |> rename(d_village=village) |>  
+    ) |> rename(d_village=village) |>
 # Add straight line distances.
   left_join(bike_stations |> st_drop_geometry() |> select(ucl_id, o_x=x, o_y=y),
-              by=c("start_station_id"="ucl_id")) |> 
+              by=c("start_station_id"="ucl_id")) |>
   left_join(bike_stations |> st_drop_geometry() |> select(ucl_id, d_x=x, d_y=y),
-              by=c("end_station_id"="ucl_id")) |> 
-  mutate(dist_straight= sqrt( ((o_x-d_x)^2) + ((o_y-d_y)^2) ) ) 
-  
+              by=c("end_station_id"="ucl_id")) |>
+  mutate(dist_straight= sqrt( ((o_x-d_x)^2) + ((o_y-d_y)^2) ) )
 
-bikeability_village <- bikeability |> 
-  filter(o_village != d_village, dist_straight>500) |> 
-  group_by(o_village, d_village) |> 
+
+bikeability_village <- bikeability |>
+  filter(o_village != d_village, dist_straight>500) |>
+  group_by(o_village, d_village) |>
   summarise(index=mean(cb_index), attractiveness=mean(score_attractiveness), comfort=mean(score_comfort),
             safety=mean(score_safety), coherence=mean(score_coherence), dist=mean(distance)) |> ungroup()
 
-simulated_data <- read_csv(here("data", "simulated_data2.csv")) |>
-  filter(!is.na(d_village), o_village!=d_village) |> 
-  group_by(o_village, d_village) |> 
-  summarise(index=mean(index)) |> ungroup() 
+simulated_data <- read_csv(here("data", "simulated_data.csv")) |>
+  filter(!is.na(d_village), o_village!=d_village) |>
+  group_by(o_village, d_village) |>
+  summarise(index=mean(index)) |> ungroup()
 ```
 
 ## Assign 2011 Census commutes to villages
@@ -218,8 +219,8 @@ commute_data_filtered <- commute_data %>%
 commute_data_filtered <- commute_data %>%
    filter(
         destination_msoa %in% (temp_filtered %>% pull(MSOA11CD))
-    ) |> 
-    group_by(destination_msoa) |> 
+    ) |>
+    group_by(destination_msoa) |>
     summarise(all=sum(all))
 ```
 
@@ -255,8 +256,8 @@ commute_points <- commute_data_filtered %>% mutate(od_pair=paste0(origin_msoa,"-
   select(-data)
 
 
-commute_points <- commute_data_filtered %>% mutate(all=round(all), msoa=destination_msoa) |> 
-  nest(data=-msoa) |> 
+commute_points <- commute_data_filtered %>% mutate(all=round(all), msoa=destination_msoa) |>
+  nest(data=-msoa) |>
    mutate(d_count=map(
      data,
      ~sample_n(
@@ -287,8 +288,8 @@ commute_villages  <- commute_points %>% select(-c(od_pair,o_msoa, d_msoa)) %>%
   group_by(o_village, d_village) %>%
   summarise(count=n())
 
-commute_villages  <- commute_points %>% select(-msoa) |> 
-  st_as_sf(coords=c("d_east", "d_north"), crs=27700) |> 
+commute_villages  <- commute_points %>% select(-msoa) |>
+  st_as_sf(coords=c("d_east", "d_north"), crs=27700) |>
   st_join(villages |>  filter(type=="real") %>%  select(d_village=name), .predicate=st_intersects()) %>%
   st_drop_geometry() %>%
   group_by(d_village) %>%
@@ -312,24 +313,24 @@ pm_peak_int <- interval(hms::as_hms("16:00:00"), hms::as_hms("19:59:59"))
 interpeak_int <- interval(hms::as_hms("10:00:00"), hms::as_hms("15:59:59"))
 night_int <- interval(hms::as_hms("21:00:00"), as.POSIXct(hms::as_hms("05:59:59"))+days(1))
 
-bs_data <- bs_data |> 
+bs_data <- bs_data |>
   mutate(
     t=as.POSIXct(hms::as_hms(start_time)),
     wkday=!wday(start_time, label=TRUE) %in% c("Sat", "Sun"),
     commute= wkday & (t %within% am_peak_int ) | (t %within% pm_peak_int ),
     am_commute=wkday & (t %within% am_peak_int )
-  ) |> 
+  ) |>
   select(-c(t,wkday))
 
 # Join on trips and summarise over village>village counts.
 bs_trips_villages  <- bs_data |>
   # Join trips on villages.
   left_join(bike_stations |> mutate(id=as.character(ucl_id)) |> select(id, o_village=village, o_x=x, o_y=y) |> st_drop_geometry(), by=c("start_station_id"="id")) |>
-  left_join(bike_stations |> mutate(id=as.character(ucl_id)) |> select(id, d_village=village, d_x=x, d_y=y) |> st_drop_geometry(), by=c("end_station_id"="id")) |> 
-   # Clean out trips < 500m  
-   mutate(dist_straight= sqrt( ((o_x-d_x)^2) + ((o_y-d_y)^2) ) ) |> 
-   filter(start_station_id != end_station_id, dist_straight > 500) |> 
-  group_by(o_village, d_village) |> 
+  left_join(bike_stations |> mutate(id=as.character(ucl_id)) |> select(id, d_village=village, d_x=x, d_y=y) |> st_drop_geometry(), by=c("end_station_id"="id")) |>
+   # Clean out trips < 500m
+   mutate(dist_straight= sqrt( ((o_x-d_x)^2) + ((o_y-d_y)^2) ) ) |>
+   filter(start_station_id != end_station_id, dist_straight > 500) |>
+  group_by(o_village, d_village) |>
   summarise(
     count=n()+1, commute=sum(as.numeric(commute))+1, leisure=(count-commute)+1,
     am_commute=sum(as.numeric(am_commute))+1
@@ -347,38 +348,38 @@ distribution of OD trips reinforces the fact that a large number of
 village OD pairs are cycled infrequently.
 
 ``` r
-service_pressure <- service_pressure |> 
+service_pressure <- service_pressure |>
   left_join(
-    bike_stations |> st_drop_geometry() |> select(ucl_id, village), 
-    by=c("stationId"="ucl_id") 
-    ) |> 
+    bike_stations |> st_drop_geometry() |> select(ucl_id, village),
+    by=c("stationId"="ucl_id")
+    ) |>
   filter(hour<11) |>
   group_by(village) |> summarise(pressure=mean(low_avail_count))
 
-# Join OD village bikeability data on the commute and bikeshare trip count datasets. 
-model_data <- bikeability_village |> 
-  select(-index) |> left_join(simulated_data) |> 
+# Join OD village bikeability data on the commute and bikeshare trip count datasets.
+model_data <- bikeability_village |>
+  select(-index) |> left_join(simulated_data) |>
   left_join(commute_villages |> ungroup() |> rename(commute_count=count), by=c("o_village"="o_village", "d_village"="d_village")) |>
-    left_join(bs_trips_villages |> ungroup() |>  rename(bs_count=count, bs_commute=commute, bs_leisure=leisure), by=c("o_village"="o_village", "d_village"="d_village")) |> 
-  left_join(service_pressure, by=c("d_village"="village"))  |> rename(d_pressure=pressure) |> 
-    left_join(service_pressure, by=c("o_village"="village")) |>  rename(o_pressure=pressure) |>  
+    left_join(bs_trips_villages |> ungroup() |>  rename(bs_count=count, bs_commute=commute, bs_leisure=leisure), by=c("o_village"="o_village", "d_village"="d_village")) |>
+  left_join(service_pressure, by=c("d_village"="village"))  |> rename(d_pressure=pressure) |>
+    left_join(service_pressure, by=c("o_village"="village")) |>  rename(o_pressure=pressure) |>
   # Identify OD village pairs involving hub stations.
   mutate(is_hub=case_when(
            d_village %in% (c("Waterloo | South Bank", "King's Cross", "Liverpool Street", "Euston", "Marylebone", "Victoria | Pimlico", "Borough | Bermondsey")) ~ TRUE,
            o_village %in% (c("Waterloo | South Bank", "King's Cross", "Liverpool Street", "Euston", "Marylebone", "Victoria | Pimlico", "Borough | Bermondsey")) ~ TRUE,
            TRUE ~ FALSE
            )
-         ) |> 
+         ) |>
   filter(o_village!=d_village)
 
 
-plot <- model_data |> mutate(bs_rank=min_rank(-bs_commute)) |> 
-  filter(bs_commute>0) |> 
-  ggplot(aes(x=bs_rank, bs_commute)) + 
+plot <- model_data |> mutate(bs_rank=min_rank(-bs_commute)) |>
+  filter(bs_commute>0) |>
+  ggplot(aes(x=bs_rank, bs_commute)) +
   geom_line() +
   labs(x="ranked OD pair", y="OD pair trip count", title="Rank-size plot of London bikeshare OD pairs", subtitle="-- Peak time trips collected from 2018")
 ggsave(filename=here("figs", "rank-size.png"), plot=plot,width=7, height=5, dpi=300)
-ggsave(filename=here("figs","rank-size.svg"), plot=plot,width=7, height=5)   
+ggsave(filename=here("figs","rank-size.svg"), plot=plot,width=7, height=5)
 ```
 
 <img src="./figs/rank-size.svg" style="width:60.0%" />
@@ -386,12 +387,12 @@ ggsave(filename=here("figs","rank-size.svg"), plot=plot,width=7, height=5)
 We specify the model.
 
 ``` r
-lmer_spec <- 
-  linear_reg() |>  
+lmer_spec <-
+  linear_reg() |>
   set_engine("lmer")
 
-model <- model_data |> 
-  mutate(bs_rank=min_rank(-bs_commute), pressure=o_pressure+d_pressure) |> 
+model <- model_data |>
+  mutate(bs_rank=min_rank(-bs_commute), pressure=o_pressure+d_pressure) |>
   mutate(
     across(
       .cols=c(bs_commute, commute_count, am_commute),
@@ -407,8 +408,8 @@ model <- model_data |>
       .names = "z_{.col}"
     ),
   )  |>
-  mutate(type="full_dataset") |> 
-  nest(data=-type) |> 
+  mutate(type="full_dataset") |>
+  nest(data=-type) |>
   mutate(
     model=map(data, ~
                 lmer_spec |>
@@ -416,9 +417,9 @@ model <- model_data |>
     values=map2(model, data, ~augment(.x, new_data=.y)),
     fits=map(model, glance),
     coefs=map(model, tidy)
-  ) 
+  )
 
-performance::r2_nakagawa(model$model)  
+performance::r2_nakagawa(model$model)
 ```
 
 And plot model outputs.
@@ -433,7 +434,7 @@ plot <- model |> select(coefs) |> unnest() |> filter(!term %in% c("(Intercept)")
     term=="is_hubTRUE" ~ "contains hub stations",
     TRUE ~ "",
   ),
-  is_index=term=="bikeability") |> 
+  is_index=term=="bikeability") |>
   ggplot(aes(x=reorder(term, estimate), y=estimate)) +
   stat_dist_gradientinterval(
     aes(dist=dist_normal(mu=estimate, sigma=std.error), fill=is_index),
@@ -455,7 +456,7 @@ plot <- model |> select(coefs) |> unnest() |> filter(!term %in% c("(Intercept)")
   )
 
 ggsave(filename=here("figs", "model_outputs.png"), plot=plot,width=5.5, height=3, dpi=300)
-ggsave(filename=here("figs","model_outputs.svg"), plot=plot,width=5.5, height=3) 
+ggsave(filename=here("figs","model_outputs.svg"), plot=plot,width=5.5, height=3)
 ```
 
 <img src="./figs/model-outputs.svg" style="width:60.0%" />

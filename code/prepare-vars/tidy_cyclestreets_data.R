@@ -13,9 +13,9 @@ library(stringr)
 library(tmap)
 
 # In the cyclestreets batch request, users are able to choose different api version
-# where API v1 is able to give detailed info about the journe , but slightly more difficult to get the geometry of the route (especially when data quantity is huge)
+# where API v1 is able to give detailed info about the journey, but slightly more difficult to get the geometry of the route (especially when data quantity is huge)
 # data from API V2 has route geometry as a json text attribute. It can be easily converted to sf, but API V2 do not provide rich info as V1
-# The solution is to combine results from both version,
+# The solution is to combine results from both version.
 
 #read the two datasets that are obtained from different API
 data_route_details <- read.table("data/cyclestreets/cyclehire-data-API-V1.csv.gz", header=T, quote="\"", sep=",") %>%
@@ -56,10 +56,10 @@ routes_cyclestreets <- data_route_geojson %>% dplyr::select(start_id, end_id,
                                                             distance, time_seconds,
                                                             geometry) %>%
   cbind(data_route_details_parse %>% dplyr::select(start,  finish,
-                                                   start_longitude,     start_latitude,  
+                                                   start_longitude,     start_latitude,
                                                    finish_longitude,    finish_latitude,
                                                    crow_fly_distance,   speed,
-                                                   clientRouteId,       plan,               
+                                                   clientRouteId,       plan,
                                                    time,                busynance,
                                                    quietness,
                                                    signalledJunctions,  signalledCrossings,
@@ -75,6 +75,5 @@ routes_cyclestreets <- data_route_geojson %>% dplyr::select(start_id, end_id,
 
 
 head(routes_cyclestreets)
-# output - cleaned and reformatted (sf) cyclestreets routes 
+# output - cleaned and reformatted (sf) cyclestreets routes
 save(routes_cyclestreets, file = "data/cyclestreets/processed/routes_cyclestreets.Rdata")
-
