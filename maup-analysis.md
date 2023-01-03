@@ -12,7 +12,9 @@ Please cite:
 Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) “Connected
 bikeability in London: which localities are better connected by bike and
 does this matter?”, *Environment & Planning B: Urban Analytics and City
-Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8). \## Setup
+Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
+
+## Setup
 
 ### Required libraries
 
@@ -150,7 +152,7 @@ ggsave(filename=here("figs","bh-villages.svg"), plot=plot,width=6, height=5)
 Next we want to calculate the distance between this docking station and
 the closest part of the boundary of its neighbours. This is to make sure
 that this distance crosses over into neighbouing villages. Therefore we
-caluclate this based on the villages_scaled data. We also decide on a
+caluclate this based on the `villages_scaled` data. We also decide on a
 reasonable distance threshold, 500 metres, beyond which it would not
 make sense to reallocate due to boundary effects.
 
@@ -284,9 +286,9 @@ temp_outside_station_neighbours <- temp_outside_stations |>
   )
 ```
 
-Again there is a stochastic, Monte Carlo-type, approach to resampling
-villages of edge stations in a probabilistic way. We create 100
-simulated village positions for each edge docking station.
+Again there is a Monte Carlo-type approach to resampling villages of
+edge stations in a probabilistic way. We create 100 simulated village
+positions for each edge docking station.
 
 ``` r
 temp_resampled_dat <- temp_outside_station_neighbours |>

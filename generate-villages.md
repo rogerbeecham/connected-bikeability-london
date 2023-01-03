@@ -37,8 +37,8 @@ source(here("code","theme_paper.R"))
 
 ## Load villages from [jwoLondon](https://github.com/jwoLondon/mobv/blob/master/data/london/geo/localities.json)
 
-In analysing changes in London bikeshare use pre, during and after
-Covid-19 restrictions, Jo Wood and colleagues define to 84 bikeshare
+To analyse changes in London bikeshare use pre, during and after
+Covid-19 restrictions, Jo Wood and colleagues created 84 bikeshare
 ‘villages’ – labelled neighbourhoods which, assuming some familiarity
 with central London, are reasonably coherent and discriminating. We
 borrow these villages, but merge several to reduce the total number to
@@ -65,7 +65,7 @@ locality_centroids <- read_csv(here("data", "locality_centroids.csv")) %>%
 ## Aggregate [jwoLondon](https://github.com/jwoLondon/mobv/blob/master/data/london/geo/localities.json) villages
 
 Then we manually aggregate selected localities and create new centroids
-for the aggregated localities.
+for those aggregated localities.
 
 ``` r
 localities_agg <- locality_centroids %>%
@@ -104,8 +104,6 @@ localities_agg <- locality_centroids %>%
     name == "Ladbroke Grove" ~ "Notting Hill | Ladbroke Grove",
     name == "Sands End" ~ "Sands End | Parson's Green",
     name == "Parson's Green" ~ "Sands End | Parson's Green",
-    # name == "Waltham Green" ~ "Waltham Green | West Chelsea",
-    # name == "West Chelsea" ~ "Waltham Green | West Chelsea",
     name == "Victoria" ~ "Victoria | Pimlico",
     name == "Pimlico" ~ "Victoria | Pimlico",
     TRUE ~ name
@@ -140,8 +138,8 @@ rm(v)
 ```
 
 Localities (now termed *villages*) were then manually edited in QGIS to
-address issues such as villages crossing river or localities on edge of
-scheme not missing docking stations on the scheme boundary.
+address issues such as villages crossing the river or localities on the
+edge of scheme missing docking stations on the scheme boundary.
 
 ``` r
 villages <- st_read(here("data", "villages_agg_extent.geojson"))
@@ -150,7 +148,7 @@ villages <- st_read(here("data", "villages_agg_extent.geojson"))
 The semi-spatial grid-layout of villages was generating using the
 web-tool published alongside [Meulemans et
 al. 2017](https://www.gicentre.net/small-multiples-with-gaps). EDIT:
-update with package with LP implementation (under development).
+update using package with LP implementation (under development).
 
 ``` r
 # SMWG for grid layout,
@@ -274,7 +272,7 @@ gganimate::animate(
 We generate estimates of bikeability for journeys made between all
 bikeshare villages – up to $66^2$ (4,326) OD village-village pairs.
 Although the bikeshare villages offer a degree of aggregation, inferring
-geographic structure with this number of pairs using {de facto} flow
+geographic structure with this number of pairs using *de facto* flow
 visualizations is challenging. Problems of clutter and salience bias
 hinder meaningful analysis. OD maps are one alternative ([Wood et
 al. 2010](https://www.tandfonline.com/doi/abs/10.1179/000870410X12658023467367)).
@@ -293,11 +291,3 @@ village–village OD pair is roughly equally visually salient, allowing
 detailed patterns in connected bikeability to be analysed concurrently.
 
 ![OD map of connected bikeability](./figs/index.png)
-
-To demonstrate the relative benefits of the OD-map layout, we can
-compare with a typical flow visualization with lines sized and coloured
-according to bikeabillity, also ‘optimised’ to try to reduce the
-hairball effect.
-
-![Flow map of connected bikeability –
-hairball](./figs/index_hairball.svg)

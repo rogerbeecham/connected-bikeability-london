@@ -26,18 +26,17 @@ village pairs therefore become quite impractical. For our model to make
 sense, it is necessary to account for at least some of this confounding
 context.
 
-We set up a regression model exploring how trip morning trip counts in
-the LCHS (outcome) varies with bikeability, net of *demand* (derived
-from Census 2011 travel-to-work data), *service pressure* (estimated
-from bikeshare station occupancy data), whether an OD pair involves a
-key *hub* docking station and also a random intercept term on
-*destination* village to reflect the fact that the pattern of trip
-frequencies will also vary systematically on the destination village
-(\`workplace’).
+We set up a regression model exploring how morning trip counts in the
+LCHS (outcome) varies with bikeability, net of *demand* (derived from
+Census 2011 travel-to-work data), *service pressure* (estimated from
+bikeshare station occupancy data), whether an OD pair involves a key
+*hub* docking station and also a random intercept term on *destination*
+village to reflect the fact that the pattern of trip frequencies will
+also vary systematically on the destination village (‘workplace’).
 
 Later in the document we use OD maps ([Wood et
 al. 2010](https://www.tandfonline.com/doi/abs/10.1179/000870410X12658023467367))
-to validate and explore patterns of bikeability visually – in the
+to validate and explore patterns of bikeability visually and in the
 context of London’s dedicated cycling infrastructure.
 
 Please cite:
@@ -86,7 +85,8 @@ source(here("code","plot_helpers.R"))
 ## Load data
 
 Load in LCHS trips data (docking station OD pairs) commute trips
-(between MSOAs) and the village geographies.
+(between MSOAs), the village geographies and the village-village
+bikeability scores (with zoning adjustment).
 
 ``` r
 # Read in villages.
@@ -121,29 +121,8 @@ bike_stations <- bind_cols(bike_stations, bike_stations_coords)
 # Load stations data.
 service_pressure <- read_csv(here("data", "service_pressure.csv"))
 
-# Read in OD bikeability scores.
-bikeability <- read_csv(here("data", "connected_bikeability_index_od_level.csv")) |>
-  left_join(
-    bike_stations |> st_drop_geometry() |> select(ucl_id,village), by=c("start_station_id"="ucl_id")
-    ) |> rename(o_village=village) |>
-  left_join(
-    bike_stations |> st_drop_geometry() |> select(ucl_id,village), by=c("end_station_id"="ucl_id")
-    ) |> rename(d_village=village) |>
-# Add straight line distances.
-  left_join(bike_stations |> st_drop_geometry() |> select(ucl_id, o_x=x, o_y=y),
-              by=c("start_station_id"="ucl_id")) |>
-  left_join(bike_stations |> st_drop_geometry() |> select(ucl_id, d_x=x, d_y=y),
-              by=c("end_station_id"="ucl_id")) |>
-  mutate(dist_straight= sqrt( ((o_x-d_x)^2) + ((o_y-d_y)^2) ) )
-
-
-bikeability_village <- bikeability |>
-  filter(o_village != d_village, dist_straight>500) |>
-  group_by(o_village, d_village) |>
-  summarise(index=mean(cb_index), attractiveness=mean(score_attractiveness), comfort=mean(score_comfort),
-            safety=mean(score_safety), coherence=mean(score_coherence), dist=mean(distance)) |> ungroup()
-
-simulated_data <- read_csv(here("data", "simulated_data.csv")) |>
+# MAUP-adjusted bikeability.
+bikeability_village <- read_csv(here("data", "simulated_data.csv")) |>
   filter(!is.na(d_village), o_village!=d_village) |>
   group_by(o_village, d_village) |>
   summarise(index=mean(index)) |> ungroup()
@@ -358,7 +337,6 @@ service_pressure <- service_pressure |>
 
 # Join OD village bikeability data on the commute and bikeshare trip count datasets.
 model_data <- bikeability_village |>
-  select(-index) |> left_join(simulated_data) |>
   left_join(commute_villages |> ungroup() |> rename(commute_count=count), by=c("o_village"="o_village", "d_village"="d_village")) |>
     left_join(bs_trips_villages |> ungroup() |>  rename(bs_count=count, bs_commute=commute, bs_leisure=leisure), by=c("o_village"="o_village", "d_village"="d_village")) |>
   left_join(service_pressure, by=c("d_village"="village"))  |> rename(d_pressure=pressure) |>
