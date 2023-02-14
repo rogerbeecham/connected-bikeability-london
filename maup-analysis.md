@@ -29,9 +29,10 @@ pkgs <- c("tidyverse","sf", "here", "gganimate")
 # If not already installed.
 # install.packages(pkgs)
 # Core packages
-library(tidyverse)              # Bundle of packages for data manipulation.
-library(sf)                     # For working with geospatial data.
+library(tidyverse)              
+library(sf)                    
 library(here)
+library(gganimate)
 
 # ggplot theme for paper
 source(here("code","theme_paper.R"))
@@ -57,9 +58,10 @@ bike_stations  <- bike_stations |> st_join(villages %>% filter(type=="real") %>%
 # Stations coords
 bike_stations_coords <- bike_stations |> st_centroid() |> st_coordinates() |> as_tibble() |> rename_all(tolower)
 bike_stations <- bind_cols(bike_stations, bike_stations_coords)
+stations_raw <- st_read(here("data", "bike_stations.geojson")) |> st_transform(crs=27700)
 
 # Read in OD bikeability scores.
-bikeability <- read_csv(here("data", "connected_bikeability_index.csv")) |>
+bikeability <- read_csv(here("data", "connected_bikeability_index_od_level.csv")) |>
   left_join(
     bike_stations |> st_drop_geometry() |> select(ucl_id,village), by=c("start_station_id"="ucl_id")
     ) |> rename(o_village=village) |>
@@ -98,8 +100,8 @@ villages_scaled <- villages_scaled |> as_tibble() |> st_as_sf(crs=27700) |>
   mutate(row_id=row_number(), name=villages_real |> pull(name))
 
 # Identify those stations on edges
-stations_outside <- stations |> anti_join(
-  stations |> st_filter(villages_scaled) |> st_drop_geometry() |> select(operator_name)
+stations_outside <- bike_stations |> anti_join(
+  stations_raw |> st_filter(villages_scaled) |> st_drop_geometry() |> select(operator_name)
   )
 # Plot to visually inspect that are indeed towards edge of village.
 plot <- ggplot() +
@@ -117,11 +119,9 @@ ggsave(filename=here("figs","edge-stations.svg"), plot=plot,width=8, height=5)
 
 For each of these edge stations we then need to identify neighbouring
 villages that may be candidates to which they could have been
-reassigned. When doing so we want to consider the distance from each
-edge station to the nearest *boundary* of neighbouring villages, not the
-centroid.
-
-To narrow the search-space, for each edge docking station, find the
+reassigned. We want to consider the distance from each edge station to
+the nearest *boundary* of neighbouring villages, not the centroid. To
+narrow the search-space, for each edge docking station, we also find the
 neighbours of the village it is contained by using adjacency relations.
 
 Below we test this with a single station: *Broadcasting House*, within
@@ -136,7 +136,7 @@ bh_nbs <- villages_real |> filter(name== bh |> pull(name)) |>
 # Filter these villages for examination.
 temp_bh_nbs <- villages_real |>
             mutate(row_id=row_number()) |> filter(row_id %in% bh_nbs)
-# Plot to verify
+# Plot to verify.
 plot <- ggplot() +
   geom_sf(data=temp_bh_nbs  , alpha=.2) +
   geom_text(data=temp_bh_nbs, aes(x=east, y=north,label=name), alpha=.5, family="Avenir Book") +
@@ -150,11 +150,11 @@ ggsave(filename=here("figs","bh-villages.svg"), plot=plot,width=6, height=5)
 <img src="./figs/bh-villages.svg" style="width:50.0%" />
 
 Next we want to calculate the distance between this docking station and
-the closest part of the boundary of its neighbours. This is to make sure
-that this distance crosses over into neighbouing villages. Therefore we
-caluclate this based on the `villages_scaled` data. We also decide on a
-reasonable distance threshold, 500 metres, beyond which it would not
-make sense to reallocate due to boundary effects.
+the closest part of the boundary of its neighbours. To make sure that
+this distance crosses over into neighbouing villages, we caluclate this
+using the `villages_scaled` data. We also decide on a reasonable
+distance threshold, 500 metres, beyond which it would not make sense to
+reallocate due to boundary effects.
 
 ``` r
 # Make some tighter boundaries.
@@ -170,10 +170,7 @@ temp_bh_nbs_scaled <- villages_scaled |> mutate(row_id=row_number()) |> filter(r
 # Calculate those distances to neighbours.
 nearest <- st_nearest_points(bh, temp_bh_nbs_scaled)
 bw<-500
-dists <- nearest |>
-    st_as_sf() |>
-    st_coordinates() |>
-    as_tibble() |>
+dists <- nearest |> st_as_sf() |> st_coordinates() |> as_tibble() |>
     mutate(is_dest=row_number() %% 2 == 0) |>
     filter(is_dest) |>
     st_as_sf(coords=c("X","Y"), crs=27700) |> select(geometry) |>
@@ -189,7 +186,9 @@ plot <- ggplot() +
   geom_sf(data=nearest, size=.3) +
   geom_sf(data=bh, size=2) +
   labs(title="Broadcasting House and distance to neighbour boundaries") +
-  theme(axis.text=element_blank(), axis.title.x=element_blank(), axis.title.y=element_blank())
+  theme(axis.text=element_blank(), axis.title.x=element_blank(),
+        axis.title.y=element_blank()
+        )
 ggsave(filename=here("figs", "bh-neighbours.png"), plot=plot,width=7, height=5, dpi=300)
 ggsave(filename=here("figs","bh-neighbours.svg"), plot=plot,width=7, height=5)
 ```
@@ -198,15 +197,15 @@ ggsave(filename=here("figs","bh-neighbours.svg"), plot=plot,width=7, height=5)
 
 ## Reallocate stochastically
 
-We then want to have some stochastic process whereby points are
-reallocated to villages including that within which they are contained
-with a probability that varies by these distances.
+We then want some stochastic process whereby points are reallocated to
+villages including that within which they are contained with a
+probability that varies by these distances. \# Here we use a 1/d
+penalty, but it may be instructive to vary this with an exponent to
+increase / decrease the penalty – e.g. d^2 to increase, d^.5 to
+decrease.
 
 ``` r
-# Here we use 1/d, but it may be instructive to vary this with an exponent to
-# increase / decrease the penalty.
-# E.g. d^2 to increase, d^.5 to decrease.
-dat <- dists |> mutate(w=(1/(dist)), prop=round((w/sum(w)*100))) |>  select(nearest_name, prop) |> st_drop_geometry()
+dat <- dists |> mutate(w=(1/dist), prop=round((w/sum(w)*100))) |>  select(nearest_name, prop) |> st_drop_geometry()
 # Generate resamples.
 resamples<-sample(dat$nearest_name, size=100, prob=dat$prop, replace=TRUE)
 bh_animate <- bh |> mutate(villages=list(resamples)) |> unnest(villages) |> st_drop_geometry() |>
@@ -252,8 +251,9 @@ village_neighbours <-
 
 The next task is to build a dataset containing the distances between
 each edge station and its nearest village boundaries. The same approach
-is used as with the *Broadcasting House* example, but we use a
-functional (`map()`) to scale this up to every edge docking station.
+is used as with the *Broadcasting House* example, but we use
+([`map()`](https://purrr.tidyverse.org/reference/map.html)) to scale
+this up to every edge docking station.
 
 ``` r
 get_neighbour <- function(pts, nbs_scaled, nbs) {
@@ -307,7 +307,7 @@ temp_resampled_dat <- temp_outside_station_neighbours |>
   select(operator_name, village, resamples) |> unnest(c(resamples)) |> unnest(c(village)) |>
   group_by(operator_name) |> mutate(boot_id=row_number()) |> ungroup()
 
-stations_inside <- stations |>
+stations_inside <- stations_raw |>
   st_join(villages_real |> select(name)) |> st_drop_geometry() |>
   filter(!operator_name %in% (temp_resampled_dat$operator_name |> unique())) |> select(-ucl_id, village=name) |> unique() |>
   nest(data=village) |>
@@ -320,7 +320,7 @@ stations_inside <- stations |>
   ungroup()
 
 resampled_dat <- bind_rows(temp_resampled_dat, stations_inside) |>
-  inner_join(stations |> st_drop_geometry() |> group_by(operator_name) |> summarise(id=first(ucl_id)) |> ungroup())
+  inner_join(stations_raw |> st_drop_geometry() |> group_by(operator_name) |> summarise(id=first(ucl_id)) |> ungroup())
 ```
 
 For each docking-station OD pair, we generate 100 simulated datasets
@@ -357,8 +357,9 @@ simulated_data <- bind_rows(
 write_csv(simulated_data, here("data", "simulated_data.csv"))
 ```
 
-Animate over the simulated data to generate a [Hullman et
-al. 2015](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0142444)
+Animate over the simulated data to generate a hypothetical outcome plot
+([Hullman et
+al. 2015](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0142444))
 of candidate maps, in so doing we experience uncertainty due to zoning
 effects.
 
