@@ -4,22 +4,4 @@
 .RData
 .Ruserdata
 .DS_Store
-
-
-Date	Type	Read
-04/04/22	Manual
-5002
-04/01/22	Estimate
-4399
-20/09/21	Smart
-4042
-20/08/21	Smart
-4030
-20/07/21	Smart
-4030
-02/07/21	Estimate
-4029
-
-supported by Wave 1 of The UKRI Strategic Priorities Fund under the
-EPSRC Grant EP/T001569/1, particularly the ‘Digital Twins: Urban Analytics’ theme within that
-grant & The Alan Turing Institute
+/data/

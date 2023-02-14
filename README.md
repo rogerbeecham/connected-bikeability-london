@@ -19,7 +19,7 @@ Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) "Connected bikeability i
   + [CycleStreets routes](https://www.cyclestreets.net/) (via batch requests)
   + Records from London's [Cycle Infrastructure Database](https://data.london.gov.uk/dataset/cycling-infrastructure-database) using the [CycleInfraLnd](https://github.com/PublicHealthDataGeek/CycleInfraLnd) package
   + Ordnance Survey [Open Roads Data](https://www.ordnancesurvey.co.uk/business-government/products/open-map-roads)
-* [generate-villages.md](generate-villages.md): R code for generating and storing our customised bikeshare villages -- the spatial unit for analysis.
+* [generate-villages.md](generate-villages.md): R code for generating and storing customised bikeshare villages -- the spatial unit for analysis.
 * [validate-scores.md](validate-scores.md): R code for exploring how bikeability varies with observed cycle trips and London's cycling infrastructure.
 * [maup-analysis.md](maup-analysis.md): R code for generating hypothetical outcome plots to represent uncertainty from zoning effects when aggregating OD scores to bikeshare village level.
 * [application.md](application.md): R code for the data analysis discussed in our index -- where geographic variation in connected bikeability is evaluated against commuting demand.

@@ -6,9 +6,9 @@ output:
 
 ## Introduction
 
-This document explores how OD-level bikeability scores vary with observed trips made in the bikeshare scheme. Such an approach has been used previously to *validate* bikeability scores under the assumption that trips are more likely to be made in parts of a city that are more amenable to cycling.
+This document explores how OD-level bikeability scores vary with observed trips made in the bikeshare scheme. Such an approach has been used previously to *validate* bikeability scores under the assumption that trips are more likely to be made in parts of a city that are amenable to cycling.
 
-This assumption is difficult to analyse empirically without conditioning on some fairly substantial confounding context. First, the amount of cycling between OD locations in the LCHS is heavily conflated with demand -- where work and other activities are concentrated in London. Second, heavy competition for bikes and docking stations leads to service pressure, making certain parts of the scheme more viable than others. Third, related to demand, LCHS trip patterns are dominated by two distinct functions that are difficult to adjust for: a leisure-type function characterised by trips coinciding with London’s parks and tourist attractions and a commuter-type function where so-called ‘last-mile’ trips connect major rail terminals and workplace centres. Finally, bikeshare schemes incentivise short trips, both in their physical design and pricing regimes; journeys connecting more remote OD village pairs therefore become quite impractical. For our model to make sense, it is necessary to account for at least some of this confounding context.
+This assumption is difficult to analyse empirically without conditioning on some fairly substantial confounding context. First, the amount of cycling between OD locations in the LCHS is heavily conflated with demand -- where work and other activities are concentrated in London. Second, heavy competition for bikes and docking stations leads to service pressure, making certain parts of the scheme more viable than others. Third, related to demand, LCHS trip patterns are dominated by two distinct functions that are difficult to adjust for: a leisure-type function characterised by trips coinciding with London’s parks and tourist attractions and a commuter-type function where so-called ‘last-mile’ trips connect major rail terminals and workplace centres. Fourth, bikeshare schemes incentivise short trips, both in their physical design and pricing regimes; journeys connecting more remote OD village pairs therefore become quite impractical. For our model to make sense, it is necessary to account for at least some of this confounding context.
 
 We set up a regression model exploring how morning trip counts in the LCHS (outcome) varies with bikeability, net of *demand* (derived from Census 2011 travel-to-work data), *service pressure* (estimated from bikeshare station occupancy data), whether an OD pair involves a key *hub* docking station and also a random intercept term on *destination* village to reflect the fact that the pattern of trip frequencies will also vary systematically on the destination village ('workplace').
 
@@ -25,61 +25,64 @@ Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) "Connected bikeability i
 Required packages can be installed individually with `install.packages(<package_name>)`. Core packages are imported into the session with `library(<package_name>)`. Occasional use of packages is made with the `<package-name>::<function-name>()` syntax to avoid polluting the workspace.
 
 ```{r, eval=FALSE}
-pkgs <- c("tidyverse","sf", "here")
+pkgs <- c("tidyverse", "lubridate", "here", "sf", "tidymodels", "ggdist", "distributional", "geosphere", "patchwork")
 # If not already installed.
 # install.packages(pkgs)
-# Core packages
+
+# Core packages.
 library(here)
 library(patchwork)
 library(tidyverse)
 library(lubridate)
 
+# Geospatial packages.
 library(sf)
 library(geosphere)
 
+# Modelling packages.
 library(tidymodels)
-install.packages("multilevelmod")
+# install.packages("multilevelmod")
 library(multilevelmod)
-install.packages("performance")
-
+# install.packages("broom.mixed")
+library(broom.mixed)
+# install.packages("performance")
 library(distributional)
 library(ggdist)
 
-# ggplot theme for paper
+# ggplot theme for paper, plus plot helpers.
 source(here("code","theme_paper.R"))
 source(here("code","plot_helpers.R"))
 ```
 
 ## Load data
 
-Load in LCHS trips data (docking station OD pairs) commute trips (between MSOAs), the village geographies and the village-village bikeability scores (with zoning adjustment).
+Load in LCHS trips data (docking station OD pairs), commute data (between MSOAs), the village geographies and the village-village bikeability scores (with zoning adjustment). For brevity, the code block loading this data has been hidden here, but can be viewed in the raw [validate-scores.Rmd](validate-scores.Rmd) file.
 
-```{r, eval=FALSE}
+```{r, eval=FALSE, echo=FALSE}
 # Read in villages.
 villages <- st_read(here("data", "grid_real_sf.geojson"))
 villages_real <- villages |> filter(type=="real") |> mutate(row_id=row_number())
 
-# Read in OD commute data : msoa-msoa
+# Read in OD commute data : msoa-msoa.
 commute_data  <- read_csv(here("data", "wicid_output_occupation.csv")) |>
   select(origin_msoa, destination_msoa, all)
-# MSOA boundary data (from https://geoportal.statistics.gov.uk/s)
-# Simplified using rmapshaper
+# MSOA boundary data (from https://geoportal.statistics.gov.uk/), simplified using rmapshaper.
 msoa_boundaries <- st_read(here("data", "msoa_boundaries.geojson"))
 # Filter on all MSOAs within London.
-region_boundaries <- st_read(here("data", "regions.geojson")) %>%
+region_boundaries <- st_read(here("data", "regions.geojson")) |>
   filter(RGN20NM=="London")
-temp <- msoa_boundaries %>% st_filter(region_boundaries %>% select(RGN20NM))
+temp <- msoa_boundaries |> st_filter(region_boundaries |> select(RGN20NM))
 # Not very simplified as City of London so small.
-temp <- temp %>% rmapshaper::ms_simplify(keep=.1)
+temp <- temp |> rmapshaper::ms_simplify(keep=.1)
 # Cast to OSGB.
-temp <- temp %>% st_transform(crs=27700)
+temp <- temp |> st_transform(crs=27700)
 
-# Read in bikeshare trip data : docking-station>docking-station
+# Read in bikeshare trip data : docking-station>docking-station.
 bs_data <- fst::read_fst(here("data", "trips_2018.fst"))
 # Load stations data.
 bike_stations <-  st_read(here("data", "bike_stations.geojson")) |> st_transform(crs=27700)
 # Join on villages.
-bike_stations  <- bike_stations |> st_join(villages %>% filter(type=="real") %>%  select(village=name), .predicate=st_intersects())
+bike_stations  <- bike_stations |> st_join(villages |> filter(type=="real") |>  select(village=name), .predicate=st_intersects())
 # Stations coords
 bike_stations_coords <- bike_stations |> st_centroid() |> st_coordinates() |> as_tibble() |> rename_all(tolower)
 bike_stations <- bind_cols(bike_stations, bike_stations_coords)
@@ -92,6 +95,10 @@ bikeability_village <- read_csv(here("data", "simulated_data.csv")) |>
   filter(!is.na(d_village), o_village!=d_village) |>
   group_by(o_village, d_village) |>
   summarise(index=mean(index)) |> ungroup()
+
+# Read in original OD bikeability scores with avg routed trip distances.
+distance <- read_csv(here("data", "connected_bikeability_index.csv")) |> 
+  select(o_village=start_bv_name, d_village=end_bv_name, dist=bv_od_mean_dist)
 ```
 
 ## Assign 2011 Census commutes to villages
@@ -101,130 +108,76 @@ The two geographies, MSOAs and villages, intersect in many different ways and ca
 We define a function for the random spatial sampling, using [`st_sample`](https://r-spatial.github.io/sf/reference/st_sample.html).
 
 ```{r, eval=FALSE}
-#' Random spatial sample within polygon.
-#'
-#'
-#' @param geo An sf MULTIPOLYGON object.
-#' @param n Desired sample size.
-#'
-#' @return A tidy data frame (tibble) with ST_POINT geometry defining point locations.
-#'
-#' @export
+# Random spatial sample within polygon.
+# geo An sf MULTIPOLYGON object.
+# n Desired sample size.
+# Returns a tidy data frame (tibble) with ST_POINT geometry defining point locations.
 geo_sample <- function(geo, n) {
-  return(
-    sf::st_sample(x=geo, size=n) %>%
-    st_coordinates()
-  )
+  return(sf::st_sample(x=geo, size=n) |> st_coordinates())
 }
 ```
 
-We then generate a large set ($n=2000$) of sampled points for each MSOA, held in `sampled_msoas`.
+We then generate a large set ($n=2000$) of sampled points for each MSOA, held in `sampled_msoas`. 
 
 ```{r, eval=FALSE}
 # Buffer around bikeshare scheme villages.
-temp_buffer <- villages %>% filter(type=="real") %>%
-  st_buffer(dist=0, .predictate=st_intersects) %>%
-  summarise()
-temp_filtered <- temp  %>% st_filter(temp_buffer, .predictate=st_intersects())
+temp_buffer <- villages |> filter(type=="real") |> st_buffer(dist=0, .predictate=st_intersects) |> summarise()
+temp_filtered <- temp  |> st_filter(temp_buffer, .predictate=st_intersects())
 
 # For quick searching, generate sampled point locations for each MSOA.
-# Resample from these locations to then generate origin and destination points
+# Resample from these locations to generate origin and destination points
 # for each commute.
-sampled_msoas <- temp_filtered %>% select(msoa=MSOA11CD) %>%
-  nest(data=-c(msoa)) %>%
-  mutate(
-    sampled_points=map(data,~geo_sample(geo=.x,n=2000) %>%
-                     as_tibble(.name_repair=~c("east", "north"))
-    )
-  ) %>%
-  unnest(-data) %>%
+sampled_msoas <- temp_filtered |> select(msoa=MSOA11CD) |>
+  nest(data=-c(msoa)) |>
+  mutate(sampled_points=map(data,~geo_sample(geo=.x,n=2000) |> as_tibble(.name_repair=~c("east", "north")))) |>
+  unnest(-data) |>
   select(-data)
 
-# Filter all Census msoas whose destinations are within the buffer.
-commute_data_filtered <- commute_data %>%
-    rowwise() %>%
-    mutate(all=sum(all)) %>%
+# Filter all Census msoas within the buffer.
+commute_data_filtered <- commute_data |> 
+    rowwise() |> 
+    mutate(all=sum(all)) |> 
     ungroup() %>%
-    select(origin_msoa, destination_msoa, all) %>%
+    select(origin_msoa, destination_msoa, all) |> 
     filter(
-        origin_msoa %in% (temp_filtered %>% pull(MSOA11CD)) &
-        destination_msoa %in% (temp_filtered %>% pull(MSOA11CD))
+        origin_msoa %in% (temp_filtered |>  pull(MSOA11CD)) &
+        destination_msoa %in% (temp_filtered |>  pull(MSOA11CD))
       )
-
-commute_data_filtered <- commute_data %>%
-   filter(
-        destination_msoa %in% (temp_filtered %>% pull(MSOA11CD))
-    ) |>
-    group_by(destination_msoa) |>
-    summarise(all=sum(all))
 ```
 
-For each commute we then search in `sampled_msoas` to attach point locations. This is achieved by taking each MSOA-MSOA OD pair and sampling MSOA point locations by destination according to the commute count of that OD pair.
-
-
+For each commute we then search in `sampled_msoas` to attach point locations. This is achieved by taking each MSOA-MSOA OD pair and sampling MSOA point locations according to the commute count of that OD pair. Caution: this may take c.15 mins to execute.
 ```{r, eval=FALSE}
 # Generate points.
-commute_points <- commute_data_filtered %>% mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) %>%
-  filter(all>0) %>%
-  nest(data=-c(od_pair)) %>%
+commute_points <- commute_data_filtered |>
+  mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) |> 
+  filter(all>0) |> 
+  nest(data=-c(od_pair)) |> 
   mutate(
     o_count=map(
       data,
-      ~sample_n(
-        sampled_msoas %>% filter(msoa==.x %>% pull(origin_msoa)),
-        size=.x %>% pull(all)
-        ) %>%
-      as_tibble(.name_repair=~c("o_msoa","o_east", "o_north"))
+      ~sample_n(sampled_msoas |>  filter(msoa==.x |>  pull(origin_msoa)), size=.x |> pull(all)) |> as_tibble(.name_repair=~c("o_msoa","o_east", "o_north"))
     ),
    d_count=map(
      data,
-     ~sample_n(
-       sampled_msoas %>% filter(msoa==.x %>% pull(destination_msoa)),
-       size=.x %>% pull(all)
-       ) %>%
-      as_tibble(.name_repair=~c("d_msoa","d_east", "d_north"))
-   ),
-  ) %>%
-  unnest(-data) %>%
-  select(-data)
-
-
-commute_points <- commute_data_filtered %>% mutate(all=round(all), msoa=destination_msoa) |>
-  nest(data=-msoa) |>
-   mutate(d_count=map(
-     data,
-     ~sample_n(
-       sampled_msoas %>% filter(msoa==.x %>% pull(destination_msoa)),
-       size=.x %>% pull(all), replace=TRUE
-       ) %>%
-      as_tibble(.name_repair=~c("d_msoa","d_east", "d_north"))
-     ),
-  ) %>%
-  unnest(-data) %>%
-  select(-data)
-
-
+     ~sample_n(sampled_msoas |>  filter(msoa==.x |>  pull(destination_msoa)), size=.x |> pull(all)) |> as_tibble(.name_repair=~c("d_msoa","d_east", "d_north"))
+   )
+  ) |> 
+  unnest(-data) |>  select(-data)
+print( Sys.time() - start )
 ```
 
 Finally, commutes are assigned to the bikeshare village in which they are contained using [`st_join`](https://r-spatial.github.io/sf/reference/st_join.html), and we then summarise over village-village OD pairs.
 
 ```{r, eval=FALSE}
-commute_villages  <- commute_points %>% select(-c(od_pair,o_msoa, d_msoa)) %>%
-  st_as_sf(coords=c("o_east", "o_north"), crs=27700) %>%
-  st_join(villages %>% filter(type=="real") %>%  select(o_village=name), .predicate=st_intersects()) %>%
-  st_drop_geometry() %>%
-  st_as_sf(coords=c("d_east", "d_north"), crs=27700) %>%
-  st_join(villages %>% filter(type=="real") %>%  select(d_village=name), .predicate=st_intersects())  %>%
-  st_drop_geometry() %>%
-  filter(!is.na(o_village) & !is.na(d_village)) %>%
-  group_by(o_village, d_village) %>%
-  summarise(count=n())
-
-commute_villages  <- commute_points %>% select(-msoa) |>
-  st_as_sf(coords=c("d_east", "d_north"), crs=27700) |>
-  st_join(villages |>  filter(type=="real") %>%  select(d_village=name), .predicate=st_intersects()) %>%
-  st_drop_geometry() %>%
-  group_by(d_village) %>%
+commute_villages  <- commute_points |>  select(-c(od_pair,o_msoa, d_msoa)) |> 
+  st_as_sf(coords=c("o_east", "o_north"), crs=27700) |> 
+  st_join(villages |>  filter(type=="real") |>   select(o_village=name), .predicate=st_intersects()) |> 
+  st_drop_geometry() |> 
+  st_as_sf(coords=c("d_east", "d_north"), crs=27700) |> 
+  st_join(villages %>% filter(type=="real") %>%  select(d_village=name), .predicate=st_intersects())  |> 
+  st_drop_geometry() |> 
+  filter(!is.na(o_village) & !is.na(d_village)) |> 
+  group_by(o_village, d_village) |> 
   summarise(count=n())
 ```
 
@@ -233,7 +186,6 @@ commute_villages  <- commute_points %>% select(-msoa) |>
 Bikeshare trips can be straightforwardly assigned to villages. Given that trajectories are not known, and so estimated using a routing algorithm, we have more confidence in the routes being reliable approximations of actually cycled trajectories for utility, commuter journeys, and so we filter on those trip pairs more likely to be commutes -- those occurring during the weekday morning peak.
 
 ```{r, eval=FALSE}
-# Identify trip types.
 # Trip type time bins.
 am_peak_int <- interval(hms::as_hms("06:00:00"), hms::as_hms("09:59:59"))
 pm_peak_int <- interval(hms::as_hms("16:00:00"), hms::as_hms("19:59:59"))
@@ -270,26 +222,23 @@ In order to set-up the model, we create the dataset by joining the bikeability d
 
 ```{r, eval=FALSE}
 service_pressure <- service_pressure |>
-  left_join(
-    bike_stations |> st_drop_geometry() |> select(ucl_id, village),
-    by=c("stationId"="ucl_id")
-    ) |>
+  left_join(bike_stations |> st_drop_geometry() |> select(ucl_id, village), by=c("stationId"="ucl_id")) |>
   filter(hour<11) |>
-  group_by(village) |> summarise(pressure=mean(low_avail_count))
+  group_by(village) |>
+  summarise(pressure=mean(low_avail_count))
 
 # Join OD village bikeability data on the commute and bikeshare trip count datasets.
 model_data <- bikeability_village |>
   left_join(commute_villages |> ungroup() |> rename(commute_count=count), by=c("o_village"="o_village", "d_village"="d_village")) |>
-    left_join(bs_trips_villages |> ungroup() |>  rename(bs_count=count, bs_commute=commute, bs_leisure=leisure), by=c("o_village"="o_village", "d_village"="d_village")) |>
+  left_join(bs_trips_villages |> ungroup() |>  rename(bs_count=count, bs_commute=commute, bs_leisure=leisure), by=c("o_village"="o_village", "d_village"="d_village")) |>
   left_join(service_pressure, by=c("d_village"="village"))  |> rename(d_pressure=pressure) |>
-    left_join(service_pressure, by=c("o_village"="village")) |>  rename(o_pressure=pressure) |>
+  left_join(service_pressure, by=c("o_village"="village")) |>  rename(o_pressure=pressure) |>
   # Identify OD village pairs involving hub stations.
-  mutate(is_hub=case_when(
-           d_village %in% (c("Waterloo | South Bank", "King's Cross", "Liverpool Street", "Euston", "Marylebone", "Victoria | Pimlico", "Borough | Bermondsey")) ~ TRUE,
-           o_village %in% (c("Waterloo | South Bank", "King's Cross", "Liverpool Street", "Euston", "Marylebone", "Victoria | Pimlico", "Borough | Bermondsey")) ~ TRUE,
-           TRUE ~ FALSE
-           )
+  mutate(is_hub=
+           (d_village %in% (c("Waterloo | South Bank", "King's Cross", "Liverpool Street", "Euston", "Marylebone", "Victoria | Pimlico", "Borough | Bermondsey"))) |
+           (o_village %in% (c("Waterloo | South Bank", "King's Cross", "Liverpool Street", "Euston", "Marylebone", "Victoria | Pimlico", "Borough | Bermondsey")))
          ) |>
+  left_join(distance) |> 
   filter(o_village!=d_village)
 
 
@@ -308,33 +257,23 @@ ggsave(filename=here("figs","rank-size.svg"), plot=plot,width=7, height=5)
 We specify the model.
 
 ```{r, eval=FALSE}
-lmer_spec <-
-  linear_reg() |>
-  set_engine("lmer")
+lmer_spec <- linear_reg() |> set_engine("lmer")
 
 model <- model_data |>
   mutate(bs_rank=min_rank(-bs_commute), pressure=o_pressure+d_pressure) |>
   mutate(
+    across(.cols=c(bs_commute, commute_count, am_commute),.fns=~replace_na(.x,1)),
+    across(.cols=c(bs_commute, commute_count, am_commute),.fns=~log(.x)), 
     across(
-      .cols=c(bs_commute, commute_count, am_commute),
-      .fns=~replace_na(.x,1)
-    ),
-     across(
-      .cols=c(bs_commute, commute_count, am_commute),
-      .fns=~log(.x)
-    ),
-    across(
-      .cols=c(bs_commute, am_commute, commute_count, index, attractiveness, comfort, safety, coherence, pressure, dist),
+      .cols=c(bs_commute, am_commute, commute_count, index, pressure, dist),
       .fns=~(.x-mean(.x, na.rm=TRUE))/sd(.x, na.rm=TRUE),
       .names = "z_{.col}"
-    ),
+    )
   )  |>
-  mutate(type="full_dataset") |>
-  nest(data=-type) |>
+  mutate(type="full_dataset") |> nest(data=-type) |>
   mutate(
-    model=map(data, ~
-                lmer_spec |>
-                parsnip::fit(z_am_commute ~  z_index + z_commute_count + z_pressure + z_dist + is_hub + (1 | d_village), data=.x)),
+    model=map(data, ~ lmer_spec |>
+                fit(z_am_commute ~  z_index + z_commute_count + z_pressure + z_dist + is_hub + (1 | d_village), data=.x)),
     values=map2(model, data, ~augment(.x, new_data=.y)),
     fits=map(model, glance),
     coefs=map(model, tidy)
@@ -365,7 +304,7 @@ plot <- model |> select(coefs) |> unnest() |> filter(!term %in% c("(Intercept)")
   geom_text( data=. %>% filter(estimate>0), aes(x=term, y=-.05, label=term), hjust="right", family="Avenir Book") +
   geom_text( data=. %>% filter(estimate<0, term != "routed distances"), aes(x=term, y=+.05, label=term), hjust="left", family="Avenir Book") +
   geom_text( data=. %>% filter(term == "routed distances"), aes(x=term, y=estimate+.05, label=term), hjust="left", family="Avenir Book") +
-  geom_spoke(aes(colour=is_index), angle=0, radius=.5, position="center_spoke",alpha=.3, size=.3) +
+  geom_spoke(aes(colour=is_index), angle=0, radius=.5, position="center_spoke",alpha=.3, linewidth=.3) +
   scale_y_continuous(limits=c(-.9,.9), expand = c(0, 0)) +
   labs(y="coefficient estimate (z-score units)", x="explanatory variable", title="Outputs from model estimating trip counts", subtitle="Morning-peak bikeshare trip between bikeshare villages", caption="Conditional R^2 .85, Marginal R^2 .78")+
   coord_flip() +
@@ -383,120 +322,26 @@ ggsave(filename=here("figs","model_outputs.svg"), plot=plot,width=5.5, height=3)
 
 ![](./figs/model-outputs.svg){width=60%}
 
-## Plot OD bikeability
+## Plot bikeability against infrastructure provision
 
-```{r, eval=FALSE, echo=FALSE}
-grid_real_sf <- st_read(here("data", "grid_real_sf.geojson"))
-rivers <- st_read(here("data", "river_buffer.geojson"))
-
-bbox_grid <- st_bbox(grid_real_sf %>% filter(type=="real"))
-box_width <- bbox_grid$xmax-bbox_grid$xmin
-box_height <- bbox_grid$ymax-bbox_grid$ymin
-
-# Rivers.
-temp_rivers <- plot_data_temp %>%
-  filter(focus==1) %>%
-  st_drop_geometry() %>%
-  mutate(geometry=rivers$geometry) %>%
-  st_as_sf(sf_column_name = "geometry")
-# Infrastructure
-temp_infra <- plot_data_temp |>
-  filter(focus==1) |>
-  st_drop_geometry() |>
-  select(name, d_x,d_y) |>
-  nest(data=c(name)) |>
-  mutate(
-    geometry=map(data, ~infra_scheme$geometry)
-  ) |> select(-data) |> unnest()  |>
-  st_as_sf(sf_column_name = "geometry")
-
-# Temporary plot object of data : grid-within-grid layout.
-temp_ods <- grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
-  select(d_village=name)
-temp_ods <- temp_ods %>%
-  mutate(o_village=list(temp_ods %>% pull(d_village))) %>%
-  unnest(cols=o_village)
-
-plot_data_temp <- grid_real_sf |>  filter(type=="real") |>
-  right_join(temp_ods %>% left_join(bikeability_village),  by=c("name"="o_village")) |>
-  mutate(o_village=name) %>% rename(o_x=x, o_y=y) %>%
-  left_join(grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
-              select(name,x,y), by=c("d_village"="name")
-  ) %>%
-  rename(d_x=x, d_y=y) %>%
-  # Identify village in focus (edit this to switch between D-OD and O-DO matrix).
-  mutate(label=if_else(o_village==d_village,d_village,""),
-         focus=if_else(o_village==d_village,1,0))
-
-highlights <- c("King's cross", "Angel", "St John's Wood", "Earl's Court", "St Paul's", "Bank", "Olympic Park", "Whitechapel", "Shoreditch")
-plot <- plot_data_temp %>%
-  ggplot()+
-
-   geom_rect(data=. %>% filter(d_village==o_village, d_village %in% highlights),xmin=bbox_grid$xmin, xmax=bbox_grid$xmax, ymin=bbox_grid$ymin, ymax=bbox_grid$ymax, fill="#f0f0f0", colour="#f0f0f0", size=5 )+
-
-  geom_sf(data=. %>% group_by(d_village) %>%
-            summarise(d_y=first(d_y), d_x=first(d_x)), colour="#616161", size=.2)+
-
-  geom_sf(data=. %>% filter(d_village!=o_village),aes(fill=index), colour="#ffffff", size=.03)+
-  geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.03)+
-
-  geom_sf(data=temp_rivers, size=.05, fill="#bdbdbd", alpha=1)+
-  geom_sf(data=temp_infra, size=.07, fill="#252525", alpha=1)+
-
-  geom_text(data=. %>% filter(focus==1),
-            aes(x=east, y=north, label=str_sub(label,1,1)),
-            colour="#252525", alpha=1, size=1.6, show.legend=FALSE,
-            hjust="centre", vjust="middle")+
-  geom_text(data=. %>% filter(focus==1),
-            aes(x=bbox_grid$xmax, y=bbox_grid$ymin, label=gsub("*\\|.", "\n ", label)),
-            colour="#252525", alpha=0.9, size=2.3, show.legend=FALSE,
-            hjust="right", vjust="bottom")+
-  coord_sf(crs=st_crs(plot_data_temp), datum=NA)+
-  facet_grid(d_y~d_x, shrink=FALSE)+
-  scale_fill_distiller(palette="PuBu", direction=1, na.value="#f7f7f7")+
-  labs(title="Connected bikeability index", subtitle="-- Large cells are destinations, small maps origins") +
-  guides(fill="none") +
-  theme(
-    panel.spacing=unit(0.1, "lines"),
-    axis.title.x=element_blank(),axis.title.y=element_blank(),
-    strip.text.x = element_blank(), strip.text.y = element_blank(),
-    plot.title = element_text(size = 14),
-    panel.background = element_rect(fill="#ffffff", colour="#ffffff"),
-    plot.background = element_rect(fill="#eeeeee", colour = NA)
-  )
-
-ggsave(here("figs", "index.svg"), plot=plot,width=13.5, height=7.2)
-ggsave(here("figs", "index.png"), plot=plot,width=13.5, height=7, dpi=600)
-
-
-plot <- plot_data_temp %>%
-  ggplot(aes(index)) +
-  geom_histogram(aes(fill = ..x..), colour="#616161", size=.08) +
-  scale_fill_distiller(palette="PuBu", direction=1, guide="none") +
-  labs(x="bikeability", y="village OD count") +
-  theme(axis.text.x = element_blank())
-
-ggsave(here("figs", "index_legend.png"), plot=plot,width=5, height=1.8, dpi=600)
-```
-
-![](./figs/index.png)
-
-## Compare against infrastructure provision
+OD bikeability scores are also validated by showing aggregated  and full OD bikeability data in geographic context and against infrastructure provision. For brevity, the code block performing this analysis has been hidden, but can be viewed in the raw [validate-scores.Rmd](validate-scores.Rmd) file.
 
 ```{r, eval=FALSE, echo=FALSE}
 # TfL release of key cycle routes data
 url <- "https://cycling.data.tfl.gov.uk/CycleRoutes/CycleRoutes.json"
 infra <-  st_read(url) |> st_transform(crs=27700)
+grid_real_sf <- st_read(here("data", "grid_real_sf.geojson"))
+rivers <- st_read(here("data", "river_buffer.geojson"))
 
 d_maps <- model_data |>
-  filter(end_bv_name %in% c("Westminster", "Bank")) |>
-  left_join(villages_real, by=c("start_bv_name"="name")) |> st_as_sf() |>
+  filter(d_village %in% c("Westminster", "Bank")) |>
+  left_join(villages_real, by=c("o_village"="name")) |> st_as_sf() |>
   ggplot()+
-  geom_sf(data= . %>% group_by(end_bv_name) %>%  summarise(), colour="#616161", fill="transparent", size=0.5)+
-  geom_sf(aes(fill=bv_od_cb_index), colour="#616161", size=0.1)+
-   geom_sf(data=villages_real |>  filter(name %in% c("Westminster", "Bank")) |> mutate(end_bv_name=name)
+  geom_sf(data= . %>% group_by(d_village) %>%  summarise(), colour="#616161", fill="transparent", size=0.5)+
+  geom_sf(aes(fill=index), colour="#616161", size=0.1)+
+   geom_sf(data=villages_real |>  filter(name %in% c("Westminster", "Bank")) |> mutate(d_village=name)
            , fill="#f0f0f0", size=0.3)+
-  geom_text(data= villages_real %>%  filter(name %in% c("Westminster", "Bank")) |> mutate(end_bv_name=name),
+  geom_text(data= villages_real %>%  filter(name %in% c("Westminster", "Bank")) |> mutate(d_village=name),
              aes(x=east, y=north, label=str_sub(name,1,1)),
              colour="#252525", alpha=0.9, size=2, show.legend=FALSE,
              hjust="centre", vjust="middle", family="Avenir Book")+
@@ -506,7 +351,7 @@ d_maps <- model_data |>
     palette="Blues", direction=1,
     guide = "colourbar", na.value="#f7f7f7"
   )+
-  facet_wrap(~end_bv_name, nrow=2) +
+  facet_wrap(~d_village, nrow=2) +
   theme_paper() +
   theme(
     axis.title.x=element_blank(),axis.title.y=element_blank(),
@@ -534,8 +379,6 @@ inf_map <- ggplot()+
     geom_sf(data= villages_real %>% summarise(), colour="#616161", fill="transparent", size=.8)+
     geom_sf(data= villages_real, fill="#f0f0f0", colour="#ffffff", size=0.5)+
     geom_sf(data=rivers, size=.5, fill="#969696", colour="#f0f0f0")+
-    # geom_text(data= villages_real |> filter(name %in% label_villages) |>
-    #             mutate(name=if_else(name=="Elephant & Castle | Walworth", "Elephant & Castle", name)), aes(x=east, y=north, label=name), size=1.5, family="Avenir Book", alpha=.5)+
     geom_sf(data=infra_scheme,
             aes(colour=Programme, fill=Programme), alpha=.9, size=.6
             ) +
@@ -584,3 +427,98 @@ ggsave(filename=here("figs","infra_comp.svg"), plot=plot,width=10, height=5)
 ```
 
 ![](./figs/infra_comp.svg){width=80%}
+
+
+```{r, eval=FALSE, echo=FALSE}
+bbox_grid <- st_bbox(grid_real_sf %>% filter(type=="real"))
+box_width <- bbox_grid$xmax-bbox_grid$xmin
+box_height <- bbox_grid$ymax-bbox_grid$ymin
+
+plot_data_temp <- grid_real_sf |>  filter(type=="real") |>
+  right_join(temp_ods |> left_join(bikeability_village),  by=c("name"="o_village")) |>
+  mutate(o_village=name) |> rename(o_x=x, o_y=y) |>
+  left_join(grid_real_sf |> filter(type=="real") |> st_drop_geometry() |>
+              select(name,x,y), by=c("d_village"="name")
+  ) |> rename(d_x=x, d_y=y) |>
+  # Identify village in focus (edit this to switch between D-OD and O-DO matrix).
+  mutate(label=if_else(o_village==d_village,d_village,""),
+         focus=if_else(o_village==d_village,1,0))
+
+highlights <- c("King's cross", "Angel", "St John's Wood", "Earl's Court", "St Paul's", "Bank", "Olympic Park", "Whitechapel", "Shoreditch")
+
+
+temp_ods <- grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
+  select(destination=name)
+temp_ods <- temp_ods %>%
+  mutate(origin=list(temp_ods %>% pull(destination))) %>%
+  unnest(cols=origin)
+
+plot_data_temp <- grid_real_sf %>% filter(type=="real") %>%
+  rename(origin=name, o_x=x, o_y=y) %>%
+  right_join(temp_ods, by=c("origin"="origin")) %>%
+  left_join(grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
+              select(name,x,y), by=c("destination"="name")) %>%
+  rename(d_x=x, d_y=y)
+
+# Identify locality in focus (edit this to switch between D-OD and O-DO matrix).
+plot_data_temp <- plot_data_temp %>% mutate(label=if_else(origin==destination,destination,""),
+                                            focus=if_else(origin==destination,1,0))
+
+# Rivers.
+temp_rivers <- plot_data_temp |> filter(focus==1) |> st_drop_geometry() |> mutate(geometry=rivers$geometry) |> st_as_sf(sf_column_name = "geometry")
+# Infrastructure
+temp_infra <- plot_data_temp |> filter(focus==1) |> st_drop_geometry() |> select(name, d_x,d_y) |>
+  nest(data=c(name)) |>
+  mutate(geometry=map(data, ~infra_scheme$geometry)) |> select(-data) |> unnest()  |>
+  st_as_sf(sf_column_name = "geometry")
+
+# Temporary plot object of data : grid-within-grid layout.
+temp_ods <- grid_real_sf |> filter(type=="real") |> st_drop_geometry() |> 
+   select(d_village=name) |> 
+  mutate(o_village=list(temp_ods |> pull(d_village))) |> 
+  unnest(cols=o_village)
+
+plot <- plot_data_temp |>
+  ggplot()+
+
+   geom_rect(data=. %>% filter(d_village==o_village, d_village %in% highlights),xmin=bbox_grid$xmin, xmax=bbox_grid$xmax, ymin=bbox_grid$ymin, ymax=bbox_grid$ymax, fill="#f0f0f0", colour="#f0f0f0", size=5 )+
+
+  geom_sf(data=. %>% group_by(d_village) %>%
+            summarise(d_y=first(d_y), d_x=first(d_x)), colour="#616161", size=.2)+
+
+  geom_sf(data=. %>% filter(d_village!=o_village),aes(fill=index), colour="#ffffff", size=.03)+
+  geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.03)+
+
+  geom_sf(data=temp_rivers, size=.05, fill="#bdbdbd", alpha=1)+
+  geom_sf(data=temp_infra, size=.07, fill="#252525", alpha=1)+
+
+  geom_text(data=. %>% filter(focus==1),
+            aes(x=east, y=north, label=str_sub(label,1,1)),
+            colour="#252525", alpha=1, size=1.6, show.legend=FALSE,
+            hjust="centre", vjust="middle")+
+  geom_text(data=. %>% filter(focus==1),
+            aes(x=bbox_grid$xmax, y=bbox_grid$ymin, label=gsub("*\\|.", "\n ", label)),
+            colour="#252525", alpha=0.9, size=2.3, show.legend=FALSE,
+            hjust="right", vjust="bottom")+
+  coord_sf(crs=st_crs(plot_data_temp), datum=NA)+
+  facet_grid(d_y~d_x, shrink=FALSE)+
+  scale_fill_distiller(palette="PuBu", direction=1, na.value="#f7f7f7")+
+  labs(title="Connected bikeability index", subtitle="-- Large cells are destinations, small maps origins") +
+  guides(fill="none") +
+  theme(
+    panel.spacing=unit(0.1, "lines"),
+    axis.title.x=element_blank(),axis.title.y=element_blank(),
+    strip.text.x = element_blank(), strip.text.y = element_blank(),
+    plot.title = element_text(size = 14),
+    panel.background = element_rect(fill="#ffffff", colour="#ffffff"),
+    plot.background = element_rect(fill="#eeeeee", colour = NA)
+  )
+
+ggsave(here("figs", "index.svg"), plot=plot,width=13.5, height=7.2)
+ggsave(here("figs", "index.png"), plot=plot,width=13.5, height=7, dpi=600)
+
+ggsave(here("figs", "index_legend.png"), plot=plot,width=5, height=1.8, dpi=600)
+```
+
+![](./figs/index.png)
+
