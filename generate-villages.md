@@ -71,24 +71,23 @@ viewed in [generate-villages.Rmd](generate-villages.Rmd).
 Next we create a voronoi tessellation around our new localities.
 
 ``` r
-# Define outline of original localities in order to clip voronoi.
-localities_outline <- localities %>% st_buffer(dist=50, .predictate=st_intersects) %>%
+# Define outline of original localities in order to clip Voronoi.
+localities_outline <- localities |>  st_buffer(dist=50, .predictate=st_intersects) |> 
   summarise()
 # Voronoi tessellation on new points.
-v <- st_voronoi(st_union(localities_agg %>%
-                           st_as_sf(coords=c("easting","northing"), crs=27700)),
+v <- st_voronoi(st_union(localities_agg |> st_as_sf(coords=c("easting","northing"), crs=27700)),
                 localities_outline$geometry)
 
 
 # Clip Voronoi, extract centroids and write to file.
-v <- st_intersection(st_cast(v), st_union(localities_outline)) %>%
-  as_tibble() %>% st_as_sf() %>%
+v <- st_intersection(st_cast(v), st_union(localities_outline)) |> 
+  as_tibble() |>  st_as_sf() |> 
   st_join(
-    localities_agg %>% st_as_sf(coords=c("easting","northing"), crs=27700)
+    localities_agg |>  st_as_sf(coords=c("easting","northing"), crs=27700)
     )
-v_centroids <- v %>% st_centroid() %>% st_coordinates() %>% as_tibble() %>%
+v_centroids <- v |>  st_centroid() |>  st_coordinates() |>  as_tibble() |> 
     rename(easting=X, northing=Y)
-v <- v %>% bind_cols(v_centroids)
+v <- v |>  bind_cols(v_centroids)
 st_write(v, here("data", "villages_agg.geojson"))
 rm(v)
 ```
@@ -101,120 +100,54 @@ edge of scheme missing docking stations on the scheme boundary.
 villages <- st_read(here("data", "villages_agg_extent.geojson"))
 ```
 
-The semi-spatial grid-layout of villages was generating using the
-web-tool published alongside [Meulemans et
-al. 2017](https://www.gicentre.net/small-multiples-with-gaps). EDIT:
-update using package with LP implementation (under development).
+The semi-spatial grid-layout of villages used in the paper was
+generating using the web-tool published alongside [Meulemans et
+al. 2017](https://www.gicentre.net/small-multiples-with-gaps). This can
+now be achieved using the
+[`gridmappr`](https://github.com/rogerbeecham/gridmappr) R package.
 
 ``` r
-# SMWG for grid layout,
-villages_grid <- read_tsv(here("data", "villages_grid_agg.tsv"))
+devtools::install_github("gridmappr")
+library(gridmappr)
+# Make sf grid object over localities.
+n_row <- 10
+n_col <- 13
+pts <- villages |> st_drop_geometry() |> select(name_agg, x=easting, y=northing)
+solution <- points_to_grid(pts, n_row, n_col, .6)
+villages_grid <- make_grid(villages, n_row, n_col) |> inner_join(solution) 
 ```
 
 ## Plot villages
 
-![Bikeshare villages](./figs/anim_real_grid.gif)
-
-To plot villages using the semi-spatial arrangement we need to construct
-geometries representing the grid. To do this generate a grid over the
-villages according to the dimensions of the smwg layout – $14x9$.
-
-``` r
-# Make sf grid object over localities.
-grid_sf <-  st_sf(geom=st_make_grid(villages, n=c(14,9), what="polygons")) %>%
-  mutate(id=row_number())
-```
-
-Then we must generate a vector of coordinates for each location in the
-grid, so that the relevant grid positions can be matched with their
-corresponding bikeshare villages defined in `villages_grid`.
-
-``` r
-# Helper function for rescaling.
-map_scale <- function(value, min1, max1, min2, max2) {
-  return  (min2+(max2-min2)*((value-min1)/(max1-min1)))
-}
-
-# Store grid cell locations and add as fields.
-width <- 14
-height <- 9
-
-x <- rep(0:width-1,height)
-y <- vector(length=length(x))
-for(i in 0:height-1) {
-  for(j in 0:width-1) {
-    index=1+((i)*width+j)
-    y[index] <- i
-    y[index] <- map_scale(i,0,height-1,height-1,0)
-  }
-}
-
-x <- rep(0:width-1,height)
-y <- vector(length=length(x))
-for(i in 0:height-1) {
-  for(j in 0:width-1) {
-    index=1+((i)*14+j)
-    y[index] <- i
-    y[index] <- map_scale(i,0,height-1,height-1,0)
-  }
-}
-
-# Add to grid_sf and then join on villages_grid to filter only
-# cells that are villages.
-grid_sf <- grid_sf %>% add_column(x=x, y=y) %>%
-  inner_join(villages_grid, by=c("x"="gridX", "y"="gridY")) %>%
-  st_cast(to="MULTIPOLYGON") %>%
-  rename("geometry"="geom","name"="region") %>%
-  arrange(id)
-# Calculate grid centroids for labelling.
-grid_centroids <- grid_sf %>% st_centroid() %>% st_coordinates() %>% as_tibble() %>%
-  rename("east"="X", "north"="Y")
-# Add to grid_sf.
-grid_sf <- grid_sf %>%
-  mutate(east=grid_centroids$east, north=grid_centroids$north, type="grid")
-rm(grid_centroids)
-```
-
-Finally the two geographies – semi-spatial grid and real – are merged to
-a single dataset and written out to file, also to explore displacement
-using `gganimate`.
+![Bikeshare villages](./figs/anim_real_grid.gif) The two geographies –
+semi-spatial grid and real – are merged to a single dataset and written
+out to file, also to explore displacement using `gganimate`.
 
 ``` r
 # Calculate real centroids for relabelling.
-real_centroids <- villages %>% st_centroid() %>% st_coordinates() %>% as_tibble() %>%
-  rename("east"="X", "north"="Y")
-# Add centroids to real_sf.
-real_sf <- villages %>%
-  mutate(east=real_centroids$east, north=real_centroids$north) %>%
-  left_join(villages_grid, by=c("name_agg"="region")) %>%
-  select(name=name_agg, east, north, gridX, gridY) %>%
-  # Join on grid_sf (geometry dropped) in order to arrange on id.
-  left_join(grid_sf %>% select(id, name) %>% st_drop_geometry()) %>%
-  mutate(type="real") %>%
-  relocate(type, .after=id) %>%
-  rename(x=gridX, y=gridY)
+villages <- villages |>
+  left_join(solution) |> 
+  select(col, row, x=easting, y=northing, name_agg)
 
-# Rename/organise grid_sf so can rbind with real_sf.
-grid_sf <- grid_sf %>%
-  select(name, east, north, x, y, id, type)
-# rbind() in order to lerp between layouts.
-grid_real_sf <- rbind(grid_sf %>% arrange(id), real_sf %>% arrange(id)) %>%
+grid_real <- bind_rows(
+  villages |> arrange(name_agg) |>  mutate(type="real", id=row_number()) |>  arrange(id), 
+  villages_grid |> arrange(name_agg) |>  rename(geometry=geom) |> mutate(type="grid", id=row_number()) |>  arrange(id) 
+  ) |> 
   mutate(type=fct_relevel(as_factor(type), "real","grid"))
-
+  
 # Write out.
-st_write(grid_real_sf, here("data", "grid_real_sf.geojson"))
+st_write(grid_real, here("data", "grid_real_sf.geojson"), append=FALSE)
 
 # Show displacement by morphing between layouts.
-displacement <- grid_real_sf %>%
+displacement <- grid_real |> 
   ggplot()+
   geom_sf(colour="#616161", size=0.15)+
   coord_sf(crs=27700, datum=NA)+
-  geom_text(aes(x=east, y=north, label= gsub("*\\|.", "\n ", name)),
+  geom_text(aes(x=x, y=y, label= gsub("*\\|.", "\n ", name_agg)),
              size=2.1, alpha=1, show.legend=FALSE, family="Avenir Book", colour="#000000")+
   gganimate::transition_states(type, 1, 2)+
   labs(title="Demonstrating grid layout of bikeshare villages for OD map",
-        subtitle="--Arrangement using SMWG LP",
-        caption="See: https://www.gicentre.net/smwg")+
+        subtitle="--Layout generated using `gridmappr` R package")+
   theme(axis.title.x=element_blank(), axis.title.y=element_blank())
 
 gganimate::animate(
