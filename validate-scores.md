@@ -155,6 +155,7 @@ pair. Caution: this may take c.15 mins to execute.
 
 ``` r
 # Generate points.
+start <- Sys.time() 
 commute_points <- commute_data_filtered |>
   mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) |> 
   filter(all>0) |> 

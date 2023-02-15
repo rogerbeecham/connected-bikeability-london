@@ -162,7 +162,7 @@ grid_real <- bind_rows(
   mutate(type=fct_relevel(as_factor(type), "real","grid"))
   
 # Write out.
-st_write(grid_real, here("data", "grid_real_sf.geojson"), append=FALSE)
+st_write(grid_real, here("data", "grid_real_sf.geojson"))
 
 # Show displacement by morphing between layouts.
 displacement <- grid_real |> 

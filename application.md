@@ -29,8 +29,8 @@ pkgs <- c("tidyverse","sf", "here", "rmapshaper")
 # If not already installed.
 # install.packages(pkgs)
 # Core packages
-library(tidyverse)              # Bundle of packages for data manipulation.
-library(sf)                     # For working with geospatial data.
+library(tidyverse)              
+library(sf)                    
 
 # ggplot theme for paper
 source(here("code","theme_paper.R"))
@@ -55,11 +55,11 @@ commute_data  <- read_csv(here("data", "wicid_output_occupation.csv"))
 # Simplified using rmapshaper
 msoa_boundaries <- st_read(here("data", "msoa_boundaries.geojson"))
 # Filter on all MSOAs within London.
-region_boundaries <- st_read(here("data", "regions.geojson")) %>%
+region_boundaries <- st_read(here("data", "regions.geojson")) |> 
   filter(RGN20NM=="London")
-temp <- msoa_boundaries %>% st_filter(region_boundaries %>% select(RGN20NM))
+temp <- msoa_boundaries |>  st_filter(region_boundaries %>% select(RGN20NM))
 # Not very simplified as City of London in so small.
-temp <- temp %>% rmapshaper::ms_simplify(keep=.1)
+temp <- temp |>  rmapshaper::ms_simplify(keep=.1)
 # Cast to OSGB.
 temp <- temp %>% st_transform(crs=27700)
 ```
@@ -73,14 +73,15 @@ filter the commute data on these MSOAs, both origin and destination.
 
 ``` r
 # Read in villages.
-grid_real_sf <- st_read(here("data","grid_real_sf.geojson"))
+grid_real_sf <- st_read(here("data","grid_real_sf.geojson")) |> unique()
 
 # Buffer around bikeshare scheme villages.
-temp_buffer <- grid_real_sf %>% filter(type=="real") %>%
-  st_buffer(dist=0, .predictate=st_intersects) %>%
+temp_buffer <- grid_real_sf |> filter(type=="real") |> 
+  st_buffer(dist=0, .predictate=st_intersects) |> 
   summarise()
-temp_filtered <- temp  %>% st_filter(temp_buffer, .predictate=st_intersects())
+temp_filtered <- temp  |>  st_filter(temp_buffer, .predictate=st_intersects())
 
+# Plot msoa and village geometries. 
 ggplot() +
   geom_sf(data=temp_filtered, colour="#737373", size=.1, fill="transparent") +
   geom_sf(data=temp_buffer, colour="#252525", fill="#67000d", size=0, alpha=.2)+
@@ -88,18 +89,14 @@ ggplot() +
   labs(title="MSOAs allocated to villages")
 
 # Filter all Census msoas with origins *and* destinations within the buffer.
-commute_data_filtered <- commute_data %>%
-    rowwise() %>%
+commute_data_filtered <- commute_data |> rowwise() |> 
     mutate(
       all_jobs=sum(all),
-           prof_jobs=sum(`1_managers_senior`,`2_professional`, `3_associate_professional`, na.rm=TRUE),
-           non_prof_jobs=all-prof_jobs) %>%
-    ungroup() %>%
-    select(origin_msoa, destination_msoa, prof_jobs, non_prof_jobs) %>%
-    filter(
-      origin_msoa %in% (temp_filtered %>% pull(MSOA11CD)) &
-        destination_msoa %in% (temp_filtered %>% pull(MSOA11CD))
-      )
+      prof_jobs=sum(`1_managers_senior`,`2_professional`, `3_associate_professional`, na.rm=TRUE),
+      non_prof_jobs=all-prof_jobs
+      ) |>  ungroup() |> 
+    select(origin_msoa, destination_msoa, prof_jobs, non_prof_jobs) |> 
+    filter( origin_msoa %in% (temp_filtered |>  pull(MSOA11CD)) & destination_msoa %in% (temp_filtered |>  pull(MSOA11CD)) )
 ```
 
 ## Assign individual commutes to villages
@@ -118,18 +115,13 @@ We define a function for the random spatial sampling, using
 [`st_sample`](https://r-spatial.github.io/sf/reference/st_sample.html).
 
 ``` r
-#' Random spatial sample within polygon.
-#'
-#'
-#' @param geo An sf MULTIPOLYGON object.
-#' @param n Desired sample size.
-#'
-#' @return A tidy data frame (tibble) with ST_POINT geometry defining point locations.
-#'
-#' @export
+# Random spatial sample within polygon.
+# geo An sf MULTIPOLYGON object.
+# n Desired sample size.
+# Returns a tidy data frame (tibble) with ST_POINT geometry defining point locations.
 geo_sample <- function(geo, n) {
   return(
-    sf::st_sample(x=geo, size=n) %>%
+    sf::st_sample(x=geo, size=n) |> 
     st_coordinates()
   )
 }
@@ -142,72 +134,46 @@ held in `sampled_msoas`.
 # For quick searching, generate sampled point locations for each MSOA.
 # Resample from these locations to then generate origin and destination points
 # for each commute.
-sampled_msoas <- temp_filtered %>% select(msoa=MSOA11CD) %>%
-  nest(data=-c(msoa)) %>%
-  mutate(
-    sampled_points=map(data,~geo_sample(geo=.x,n=2000) %>%
-                     as_tibble(.name_repair=~c("east", "north"))
-    )
-  ) %>%
-  unnest(-data) %>%
-  select(-data)
+sampled_msoas <- temp_filtered %>% select(msoa=MSOA11CD) |> 
+  nest(data=-c(msoa)) |> 
+  mutate( sampled_points=map(data,~geo_sample(geo=.x,n=2000) |> as_tibble(.name_repair=~c("east", "north"))) ) |> 
+  unnest(-data) |> select(-data)
 ```
 
 For each commute we then search in `sampled_msoas` to attach point
 locations – and do this separately for professional and non-professional
 commutes. This is achieved by taking each MSOA-MSOA OD pair and sampling
 MSOA point locations by origin and destination according to the commute
-count (`non_prof_jobs` / `prof_jobs`) of that OD pair.
+count (`non_prof_jobs` / `prof_jobs`) of that OD pair. Caution: may take
+c.15 mins to execute.
 
 ``` r
 # Generate points for non-profs.
-non_prof_points <- commute_data_filtered %>% mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) %>%
-  filter(non_prof_jobs>0) %>%
-  nest(data=-c(od_pair)) %>%
-  mutate(
-    o_non_prof=map(
-      data,
-      ~sample_n(
-        sampled_msoas %>% filter(msoa==.x %>% pull(origin_msoa)),
-        size=.x %>% pull(non_prof_jobs)
-        ) %>%
-      as_tibble(.name_repair=~c("o_msoa","o_east", "o_north"))
-    ),
-   d_non_prof=map(
-     data,
-     ~sample_n(
-       sampled_msoas %>% filter(msoa==.x %>% pull(destination_msoa)),
-       size=.x %>% pull(non_prof_jobs)
-       ) %>%
-      as_tibble(.name_repair=~c("d_msoa","d_east", "d_north"))
-   ),
-  ) %>%
-  unnest(-data) %>%
-  select(-data)
+start <- Sys.time()
+non_prof_points <- commute_data_filtered |>  mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) |> 
+  filter(non_prof_jobs>0) |> 
+  nest(data=-c(od_pair)) |> 
+  mutate(o_non_prof=
+           map( data, ~sample_n(sampled_msoas |>  filter(msoa==.x |>  pull(origin_msoa)), size=.x |>  pull(non_prof_jobs)) |> as_tibble(.name_repair=~c("o_msoa","o_east", "o_north")) ),
+   d_non_prof=
+     map( data, ~sample_n( sampled_msoas |>  filter(msoa==.x |>  pull(destination_msoa)), size=.x |>  pull(non_prof_jobs)) |>  as_tibble(.name_repair=~c("d_msoa","d_east", "d_north")) ),
+  ) |> 
+  unnest(-data) |> select(-data)
+print( Sys.time() - start )
 
-prof_points <- commute_data_filtered %>% mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) %>%
-  filter(prof_jobs>0) %>%
-  nest(data=-c(od_pair)) %>%
+start <- Sys.time()
+prof_points <- commute_data_filtered |>
+  mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) |> 
+  filter(prof_jobs>0) |> 
+  nest(data=-c(od_pair)) |> 
   mutate(
-    o_non_prof=map(
-      data,
-      ~sample_n(
-        sampled_msoas %>% filter(msoa==.x %>% pull(origin_msoa)),
-        size=.x %>% pull(prof_jobs)
-      ) %>%
-        as_tibble(.name_repair=~c("o_msoa","o_east", "o_north"))
-    ),
-    d_non_prof=map(
-      data,
-      ~sample_n(
-        sampled_msoas %>% filter(msoa==.x %>% pull(destination_msoa)),
-        size=.x %>% pull(prof_jobs)
-      ) %>%
-        as_tibble(.name_repair=~c("d_msoa","d_east", "d_north"))
-    ),
-  ) %>%
-  unnest(-data) %>%
-  select(-data)
+    o_non_prof=
+      map( data, ~sample_n(sampled_msoas |>  filter(msoa==.x |>  pull(origin_msoa)), size=.x |>  pull(prof_jobs)) |> as_tibble(.name_repair=~c("o_msoa","o_east", "o_north")) ),
+    d_non_prof=
+      map( data, ~sample_n(sampled_msoas |> filter(msoa==.x |> pull(destination_msoa)), size=.x |>  pull(prof_jobs)) |> as_tibble(.name_repair=~c("d_msoa","d_east", "d_north")) )
+  ) |> 
+  unnest(-data) |> select(-data)
+print( Sys.time() - start )
 ```
 
 Finally, commutes are assigned to the bikeshare village in which they
@@ -216,35 +182,35 @@ are contained using
 we then summarise over village-village OD pairs.
 
 ``` r
-ods_non_prof  <- non_prof_points %>% select(-c(od_pair,o_msoa, d_msoa)) %>%
-  st_as_sf(coords=c("o_east", "o_north"), crs=27700) %>%
-  st_join(grid_real_sf %>% filter(type=="real") %>%  select(o_village=name), .predicate=st_intersects()) %>%
-  st_drop_geometry() %>%
-  st_as_sf(coords=c("d_east", "d_north"), crs=27700) %>%
-  st_join(grid_real_sf %>% filter(type=="real") %>%  select(d_village=name), .predicate=st_intersects())  %>%
-  st_drop_geometry() %>%
-  filter(!is.na(o_village) & !is.na(d_village)) %>%
-  group_by(o_village, d_village) %>%
+ods_non_prof  <- non_prof_points %>% select(-c(od_pair,o_msoa, d_msoa)) |> 
+  st_as_sf(coords=c("o_east", "o_north"), crs=27700) |> 
+  st_join(grid_real_sf |>  filter(type=="real") |>   select(o_village=name_agg), .predicate=st_intersects()) |> 
+  st_drop_geometry() |> 
+  st_as_sf(coords=c("d_east", "d_north"), crs=27700) |> 
+  st_join(grid_real_sf |>  filter(type=="real") |>   select(d_village=name_agg), .predicate=st_intersects()) |> 
+  st_drop_geometry() |> 
+  filter(!is.na(o_village) & !is.na(d_village)) |> 
+  group_by(o_village, d_village) |> 
   summarise(count=n())
 
-ods_prof <- prof_points %>% select(-c(od_pair,o_msoa, d_msoa)) %>%
-  st_as_sf(coords=c("o_east", "o_north"), crs=27700) %>%
-  st_join(grid_real_sf %>% filter(type=="real") %>%  select(o_village=name), .predicate=st_intersects()) %>%
-  st_drop_geometry() %>%
-  st_as_sf(coords=c("d_east", "d_north"), crs=27700) %>%
-  st_join(grid_real_sf %>% filter(type=="real") %>%  select(d_village=name), .predicate=st_intersects())  %>%
-  st_drop_geometry() %>%
-  filter(!is.na(o_village) & !is.na(d_village)) %>%
-  group_by(o_village, d_village) %>%
+ods_prof <- prof_points %>% select(-c(od_pair,o_msoa, d_msoa)) |> 
+  st_as_sf(coords=c("o_east", "o_north"), crs=27700) |> 
+  st_join(grid_real_sf |> filter(type=="real") %>%  select(o_village=name_agg), .predicate=st_intersects()) |> 
+  st_drop_geometry() |> 
+  st_as_sf(coords=c("d_east", "d_north"), crs=27700) |> 
+  st_join(grid_real_sf |> filter(type=="real") |> select(d_village=name_agg), .predicate=st_intersects()) |> 
+  st_drop_geometry() |> 
+  filter(!is.na(o_village) & !is.na(d_village)) |> 
+  group_by(o_village, d_village) |> 
   summarise(count=n())
 
 ods_joined <-
-  ods_prof %>% rename(prof=count) %>%
-  full_join(ods_non_prof %>% rename(non_prof=count)) %>%
-  group_by(d_village) %>%
+  ods_prof |> rename(prof=count) |> 
+  full_join(ods_non_prof |> rename(non_prof=count)) |> 
+  group_by(d_village) |> 
   mutate(
     expected=((prof+non_prof+0.0001)*(sum(prof, na.rm=TRUE)+0.0001))/(sum(prof, na.rm=TRUE)+sum(non_prof, na.rm=TRUE)+0.0001),
-    pearson=(prof-expected)/(sqrt(expected))) %>%
+    pearson=(prof-expected)/(sqrt(expected))) |> 
   ungroup()
 
 write_csv(ods_joined, here("data", "ods_joined.csv"))
@@ -256,57 +222,47 @@ write_csv(ods_joined, here("data", "ods_joined.csv"))
 
 ``` r
 ods_full <- tibble(
-  o_village=rep(villages |> filter(type=="real") |> pull(name), times=66),
-  d_village=rep(villages |> filter(type=="real") |> pull(name), times=1, each=66)
+  o_village=rep(grid_real_sf |> filter(type=="real") |> pull(name_agg), times=66),
+  d_village=rep(grid_real_sf |> filter(type=="real") |> pull(name_agg), times=1, each=66)
 )
 
 simulated_data <- read_csv(here("data", "simulated_data.csv"))
 
-plot_data_temp <- grid_real_sf %>% filter(type=="real") %>%
+plot_data_temp <- grid_real_sf |>  filter(type=="real") |> select(-c(col, row)) |> 
   right_join(
-    ods_full %>% left_join(ods_joined),
-    ods_joined, by=c("name"="o_village")) %>%
-  mutate(o_village=name) %>% rename(o_x=x, o_y=y) %>%
-  left_join(grid_real_sf %>% filter(type=="grid") %>% st_drop_geometry() %>%
-              select(name,x,y), by=c("d_village"="name")
-  ) %>%
-  rename(d_x=x, d_y=y) %>%
+    ods_full |>  left_join(ods_joined),
+    ods_joined, by=c("name_agg"="o_village")) |> 
+  mutate(o_village=name_agg) |>  rename(o_x=x, o_y=y) |> 
+  left_join(grid_real_sf |>  filter(type=="grid") %>% st_drop_geometry() |> 
+              select(name_agg,col,row), by=c("d_village"="name_agg")
+  ) |> 
+  rename(d_x=col, d_y=row) |> 
   # Identify village in focus (edit this to switch between D-OD and O-DO matrix).
   mutate(label=if_else(o_village==d_village,d_village,""),
          focus=if_else(o_village==d_village,1,0)) |>
   mutate(commute_count=prof+non_prof)
 
-# Correlation with bikeability
-plot_data_temp |> st_drop_geometry() |>
-  left_join(simulated_data) |>
-  mutate(
-    index=if_else(is.na(index),0,index),
-    prof=if_else(is.na(prof),0,as.double(prof)),
-    non_prof=if_else(is.na(non_prof),0,as.double(non_prof)),
-    commute_count=if_else(is.na(commute_count),0,as.double(commute_count))
-    ) |>
-  group_by(d_village) |>
-  summarise(prof=cor(x=prof, y=index), non_prof=cor(x=non_prof, y=index), diff=prof-non_prof, jobs=sum(commute_count), all=cor(x=commute_count, y=index), pears=cor(x=pearson, y=index, na.rm=TRUE))
 
+# TfL release of key cycle routes data
+url <- "https://cycling.data.tfl.gov.uk/CycleRoutes/CycleRoutes.json"
+infra <-  st_read(url) |> st_transform(crs=27700)
+infra_scheme <- infra |>
+  filter(Status=="Open") |> st_intersection(grid_real |> filter(type=="real"), st_crs(grid_real))
+rivers <- st_read(here("data", "river_buffer.geojson"))
 
 bikeability <- plot_data_temp |>
   left_join(simulated_data) |>
-
   filter(d_village %in% c("Covent Garden | Strand")) |>
-
   ggplot() +
-  geom_sf(data= villages_real %>% summarise(), colour="#616161", fill="transparent", size=.4)+
+  geom_sf(data= grid_real_sf %>% filter(type=="real") %>% summarise(), colour="#616161", fill="transparent", size=.4)+
   geom_sf(aes(fill=index), colour="#ffffff", size=.05)+
-  #geom_sf(data= villages_real, fill="transparent", colour="#ffffff", size=.05)+
   geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.1)+
    geom_sf(data=infra_scheme, colour="#252525", alpha=.9, size=.2) +
-  geom_sf(data=temp_rivers %>% filter(name=="Covent Garden | Strand"), size=0, fill="#bdbdbd", alpha=1)+
-
+  geom_sf(data=rivers, size=0, fill="#bdbdbd", alpha=1)+
   geom_text(data=. %>% filter(focus==1),
-            aes(x=east, y=north, label=str_sub(label,1,1)),
+            aes(x=o_x, y=o_y, label=str_sub(label,1,1)),
             colour="#252525", alpha=0.9, size=4, show.legend=FALSE,
             hjust="centre", vjust="middle", family="Avenir Next")+
-
   scale_fill_distiller(palette="PuBu", direction=1, na.value="#f7f7f7") +
   labs(subtitle="bikeability") +
   guides(fill="none")+
@@ -318,25 +274,19 @@ bikeability <- plot_data_temp |>
       legend.text = element_blank()
     )
 
-
 jobs <- plot_data_temp |>
   left_join(simulated_data) |>
-
   filter(d_village %in% c("Covent Garden | Strand")) |>
-
   ggplot() +
-  geom_sf(data= villages_real %>% summarise(), colour="#616161", fill="transparent", size=.4)+
+  geom_sf(data=grid_real %>% filter(type=="real") %>% summarise(), colour="#616161", fill="transparent", size=.4)+
   geom_sf(aes(fill=commute_count), colour="#ffffff", size=.05)+
-  #geom_sf(data= villages_real, fill="transparent", colour="#ffffff", size=.05)+
   geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.1)+
    geom_sf(data=infra_scheme, colour="#252525", alpha=.9, size=.2) +
-  geom_sf(data=temp_rivers %>% filter(name=="Bank"), size=0, fill="#bdbdbd", alpha=1)+
-
+  geom_sf(data=rivers, size=0, fill="#bdbdbd", alpha=1)+
   geom_text(data=. %>% filter(focus==1),
-            aes(x=east, y=north, label=str_sub(label,1,1)),
+            aes(x=o_x, y=o_y, label=str_sub(label,1,1)),
             colour="#252525", alpha=0.9, size=4, show.legend=FALSE,
             hjust="centre", vjust="middle", family="Avenir Next")+
-
   scale_fill_distiller(palette="PuBu", direction=1, na.value="#f7f7f7") +
   labs(subtitle="commute counts") +
   guides(fill="none")+
@@ -350,22 +300,17 @@ jobs <- plot_data_temp |>
 
 pearson <- plot_data_temp |>
   left_join(simulated_data) |>
-
   filter(d_village %in% c("Covent Garden | Strand")) |>
-
   ggplot() +
-  geom_sf(data= villages_real %>% summarise(), colour="#616161", fill="transparent", size=.4)+
+  geom_sf(data=grid_real %>% filter(type=="real") %>% summarise(), colour="#616161", fill="transparent", size=.4)+
   geom_sf(aes(fill=pearson), colour="#ffffff", size=.05)+
-  #geom_sf(data= villages_real, fill="transparent", colour="#ffffff", size=.05)+
   geom_sf(data=. %>% filter(d_village==o_village), colour="#616161", size=.1)+
    geom_sf(data=infra_scheme, colour="#252525", alpha=.9, size=.2) +
-  geom_sf(data=temp_rivers %>% filter(name=="Bank"), size=0, fill="#bdbdbd", alpha=1)+
-
+  geom_sf(data=rivers, size=0, fill="#bdbdbd", alpha=1)+
   geom_text(data=. %>% filter(focus==1),
-            aes(x=east, y=north, label=str_sub(label,1,1)),
+            aes(x=o_x, y=o_y, label=str_sub(label,1,1)),
             colour="#252525", alpha=0.9, size=4, show.legend=FALSE,
             hjust="centre", vjust="middle", family="Avenir Next")+
-
   scale_fill_distiller(
     palette="PuOr", direction=1,
     limits=c(-max(abs(plot_data_temp$pearson)),max(abs(plot_data_temp$pearson))),
@@ -381,8 +326,8 @@ pearson <- plot_data_temp |>
       legend.text = element_blank()
     )
 
-count_hist <- plot_data_temp %>%
-  filter(d_village %in% c("Covent Garden | Strand")) %>%
+count_hist <- plot_data_temp |> 
+  filter(d_village %in% c("Covent Garden | Strand")) |> 
   ggplot(aes(commute_count)) +
   geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) +
   scale_fill_distiller(
@@ -399,9 +344,8 @@ count_hist <- plot_data_temp %>%
     panel.background = element_rect(fill="#ffffff", colour="#ffffff")
   )
 
-
-diff_hist <- plot_data_temp %>%
-  filter(d_village %in% c("Covent Garden | Strand")) %>%
+diff_hist <- plot_data_temp |> 
+  filter(d_village %in% c("Covent Garden | Strand")) |> 
   filter(o_village!=d_village) |>
   ggplot(aes(pearson)) +
   geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) +
@@ -417,9 +361,15 @@ diff_hist <- plot_data_temp %>%
     panel.background = element_rect(fill="#ffffff", colour="#ffffff")
   )
 
-index_hist <- plot_data_temp %>%
-  left_join(simulated_data) |>
-  filter(d_village %in% c("Covent Garden | Strand")) %>%
+max_index <- plot_data_temp %>%
+  left_join(simulated_data |> group_by(o_village, d_village) |> summarise(index=mean(index))) |>
+  filter(d_village %in% c("Covent Garden | Strand")) |>
+  filter(o_village!=d_village) |>
+  summarise(max=max(index), min=min(index)) |> st_drop_geometry()
+
+index_hist <- plot_data_temp |> 
+  left_join(simulated_data |> group_by(o_village, d_village) |> summarise(index=mean(index))) |>
+  filter(d_village %in% c("Covent Garden | Strand")) |> 
   filter(o_village!=d_village) |>
   ggplot(aes(index)) +
   geom_histogram(aes(fill = ..x..), colour="#616161", size=.2) +
@@ -436,13 +386,6 @@ index_hist <- plot_data_temp %>%
     strip.text.x = element_blank(), strip.text.y = element_blank(), axis.text.y = element_blank(),
     panel.background = element_rect(fill="#ffffff", colour="#ffffff")
   )
-
-max_index <- plot_data_temp %>%
-  left_join(simulated_data) |>
-  filter(d_village %in% c("Covent Garden | Strand")) |>
-  filter(o_village!=d_village) |>
-  summarise(max=max(index), min=min(index)) |> st_drop_geometry()
-
 
 maps <- bikeability + jobs + pearson
 hists <- index_hist + count_hist + diff_hist

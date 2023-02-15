@@ -148,6 +148,7 @@ commute_data_filtered <- commute_data |>
 For each commute we then search in `sampled_msoas` to attach point locations. This is achieved by taking each MSOA-MSOA OD pair and sampling MSOA point locations according to the commute count of that OD pair. Caution: this may take c.15 mins to execute.
 ```{r, eval=FALSE}
 # Generate points.
+start <- Sys.time() 
 commute_points <- commute_data_filtered |>
   mutate(od_pair=paste0(origin_msoa,"-",destination_msoa)) |> 
   filter(all>0) |> 
