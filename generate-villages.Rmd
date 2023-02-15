@@ -23,8 +23,8 @@ pkgs <- c("tidyverse","sf", "here", "gganimate")
 # If not already installed.
 # install.packages(pkgs)
 # Core packages
-library(tidyverse)              # Bundle of packages for data manipulation.
-library(sf)                     # For working with geospatial data.
+library(tidyverse)              
+library(sf)                     
 
 # ggplot theme for paper
 source(here("code","theme_paper.R"))
@@ -38,26 +38,26 @@ First load villages and their corresponding centroids from [github.com/jwoLondon
 
 ```{r, load-localities, eval=FALSE}
 # Localities from https://github.com/jwoLondon/mobv.
-localities <- st_read(here("data", "localities.geojson"), crs=27700) %>%
-  left_join(read_csv(here("data", "locality_centroids.csv")) %>% select(name, region))
+localities <- st_read(here("data", "localities.geojson"), crs=27700) |> 
+  left_join(read_csv(here("data", "locality_centroids.csv")) |>  select(name, region))
 
-locality_centroids <- read_csv(here("data", "locality_centroids.csv")) %>%
-  st_as_sf(coords=c("lon","lat"), crs=4326) %>%
-  st_transform(crs=27700) %>%
-  st_coordinates() %>%
-  as_tibble() %>%
-  bind_cols(localities %>% st_drop_geometry() %>% select(name, region)) %>%
-  rename(easting=X, northing=Y) %>%
+locality_centroids <- read_csv(here("data", "locality_centroids.csv")) |> 
+  st_as_sf(coords=c("lon","lat"), crs=4326) |> 
+  st_transform(crs=27700) |> 
+  st_coordinates() |> 
+  as_tibble() |> 
+  bind_cols(localities |>  st_drop_geometry() |>  select(name, region)) |> 
+  rename(easting=X, northing=Y) |> 
   relocate(name, .before=easting)
 ```
 
 
 ## Aggregate [jwoLondon](https://github.com/jwoLondon/mobv/blob/master/data/london/geo/localities.json) villages
 
-Then we manually aggregate selected localities and create new centroids for those aggregated localities.
+Then we manually aggregate selected localities and create new centroids for those aggregated localities. Code hidden for brevity, but can be viewed in [generate-villages.Rmd](generate-villages.Rmd).
 
-```{r, aggregate-localities, eval=FALSE}
-localities_agg <- locality_centroids %>%
+```{r, aggregate-localities, eval=FALSE, echo=FALSE}
+localities_agg <- locality_centroids |> 
   mutate(name_agg = case_when(
     name == "Putney" ~ "Putney | Wandsworth",
     name == "Wandsworth" ~ "Putney | Wandsworth",
@@ -96,32 +96,31 @@ localities_agg <- locality_centroids %>%
     name == "Victoria" ~ "Victoria | Pimlico",
     name == "Pimlico" ~ "Victoria | Pimlico",
     TRUE ~ name
-  )) %>%
-  group_by(name_agg) %>%
+  )) |> 
+  group_by(name_agg) |> 
   summarise(easting=mean(easting), northing=mean(northing), region=first(region))
 ```
 
 Next we create a voronoi tessellation around our new localities.
 
 ```{r, aggregate-tessellation, eval=FALSE}
-# Define outline of original localities in order to clip voronoi.
-localities_outline <- localities %>% st_buffer(dist=50, .predictate=st_intersects) %>%
+# Define outline of original localities in order to clip Voronoi.
+localities_outline <- localities |>  st_buffer(dist=50, .predictate=st_intersects) |> 
   summarise()
 # Voronoi tessellation on new points.
-v <- st_voronoi(st_union(localities_agg %>%
-                           st_as_sf(coords=c("easting","northing"), crs=27700)),
+v <- st_voronoi(st_union(localities_agg |> st_as_sf(coords=c("easting","northing"), crs=27700)),
                 localities_outline$geometry)
 
 
 # Clip Voronoi, extract centroids and write to file.
-v <- st_intersection(st_cast(v), st_union(localities_outline)) %>%
-  as_tibble() %>% st_as_sf() %>%
+v <- st_intersection(st_cast(v), st_union(localities_outline)) |> 
+  as_tibble() |>  st_as_sf() |> 
   st_join(
-    localities_agg %>% st_as_sf(coords=c("easting","northing"), crs=27700)
+    localities_agg |>  st_as_sf(coords=c("easting","northing"), crs=27700)
     )
-v_centroids <- v %>% st_centroid() %>% st_coordinates() %>% as_tibble() %>%
+v_centroids <- v |>  st_centroid() |>  st_coordinates() |>  as_tibble() |> 
     rename(easting=X, northing=Y)
-v <- v %>% bind_cols(v_centroids)
+v <- v |>  bind_cols(v_centroids)
 st_write(v, here("data", "villages_agg.geojson"))
 rm(v)
 ```
@@ -131,123 +130,56 @@ Localities (now termed *villages*) were then manually edited in QGIS to address 
 ```{r, load-fixed-villages, eval=FALSE}
 villages <- st_read(here("data", "villages_agg_extent.geojson"))
 ```
-The semi-spatial grid-layout of villages was generating using the web-tool published alongside [Meulemans et al. 2017](https://www.gicentre.net/small-multiples-with-gaps). EDIT: update using package with LP implementation (under development).
 
-```{r, load-grid-villages, eval=FALSE}
-# SMWG for grid layout,
-villages_grid <- read_tsv(here("data", "villages_grid_agg.tsv"))
+The semi-spatial grid-layout of villages used in the paper was generating using the web-tool published alongside [Meulemans et al. 2017](https://www.gicentre.net/small-multiples-with-gaps). This can now be achieved using the [`gridmappr`](https://github.com/rogerbeecham/gridmappr) R package.
+
+```{r, generate-grid-villages, eval=FALSE}
+devtools::install_github("gridmappr")
+library(gridmappr)
+# Make sf grid object over localities.
+n_row <- 10
+n_col <- 13
+pts <- villages |> st_drop_geometry() |> select(name_agg, x=easting, y=northing)
+solution <- points_to_grid(pts, n_row, n_col, .6)
+villages_grid <- make_grid(villages, n_row, n_col) |> inner_join(solution) 
 ```
 
 ## Plot villages
 
 ![Bikeshare villages](./figs/anim_real_grid.gif)
-
-
-To plot villages using the semi-spatial arrangement we need to construct geometries representing the grid. To do this generate a grid over the villages according to the dimensions of the smwg layout -- $14x9$.
-
-```{r, create-grid, eval=FALSE}
-# Make sf grid object over localities.
-grid_sf <-  st_sf(geom=st_make_grid(villages, n=c(14,9), what="polygons")) %>%
-  mutate(id=row_number())
-```
-
-Then we must generate a vector of coordinates for each location in the grid, so that the relevant grid positions can be matched with their corresponding bikeshare villages defined in `villages_grid`.
-
-
-```{r, create-grid-positions, eval=FALSE}
-
-# Helper function for rescaling.
-map_scale <- function(value, min1, max1, min2, max2) {
-  return  (min2+(max2-min2)*((value-min1)/(max1-min1)))
-}
-
-# Store grid cell locations and add as fields.
-width <- 14
-height <- 9
-
-x <- rep(0:width-1,height)
-y <- vector(length=length(x))
-for(i in 0:height-1) {
-  for(j in 0:width-1) {
-    index=1+((i)*width+j)
-    y[index] <- i
-    y[index] <- map_scale(i,0,height-1,height-1,0)
-  }
-}
-
-x <- rep(0:width-1,height)
-y <- vector(length=length(x))
-for(i in 0:height-1) {
-  for(j in 0:width-1) {
-    index=1+((i)*14+j)
-    y[index] <- i
-    y[index] <- map_scale(i,0,height-1,height-1,0)
-  }
-}
-
-# Add to grid_sf and then join on villages_grid to filter only
-# cells that are villages.
-grid_sf <- grid_sf %>% add_column(x=x, y=y) %>%
-  inner_join(villages_grid, by=c("x"="gridX", "y"="gridY")) %>%
-  st_cast(to="MULTIPOLYGON") %>%
-  rename("geometry"="geom","name"="region") %>%
-  arrange(id)
-# Calculate grid centroids for labelling.
-grid_centroids <- grid_sf %>% st_centroid() %>% st_coordinates() %>% as_tibble() %>%
-  rename("east"="X", "north"="Y")
-# Add to grid_sf.
-grid_sf <- grid_sf %>%
-  mutate(east=grid_centroids$east, north=grid_centroids$north, type="grid")
-rm(grid_centroids)
-```
-
-Finally the two geographies -- semi-spatial grid and real -- are merged to a single dataset and written out to file, also to explore displacement using `gganimate`.
-
+The two geographies -- semi-spatial grid and real -- are merged to a single dataset and written out to file, also to explore displacement using `gganimate`.
 
 ```{r, write-villages, eval=FALSE}
-
 # Calculate real centroids for relabelling.
-real_centroids <- villages %>% st_centroid() %>% st_coordinates() %>% as_tibble() %>%
-  rename("east"="X", "north"="Y")
-# Add centroids to real_sf.
-real_sf <- villages %>%
-  mutate(east=real_centroids$east, north=real_centroids$north) %>%
-  left_join(villages_grid, by=c("name_agg"="region")) %>%
-  select(name=name_agg, east, north, gridX, gridY) %>%
-  # Join on grid_sf (geometry dropped) in order to arrange on id.
-  left_join(grid_sf %>% select(id, name) %>% st_drop_geometry()) %>%
-  mutate(type="real") %>%
-  relocate(type, .after=id) %>%
-  rename(x=gridX, y=gridY)
+villages <- villages |>
+  left_join(solution) |> 
+  select(col, row, x=easting, y=northing, name_agg)
 
-# Rename/organise grid_sf so can rbind with real_sf.
-grid_sf <- grid_sf %>%
-  select(name, east, north, x, y, id, type)
-# rbind() in order to lerp between layouts.
-grid_real_sf <- rbind(grid_sf %>% arrange(id), real_sf %>% arrange(id)) %>%
+grid_real <- bind_rows(
+  villages |> arrange(name_agg) |>  mutate(type="real", id=row_number()) |>  arrange(id), 
+  villages_grid |> arrange(name_agg) |>  rename(geometry=geom) |> mutate(type="grid", id=row_number()) |>  arrange(id) 
+  ) |> 
   mutate(type=fct_relevel(as_factor(type), "real","grid"))
-
+  
 # Write out.
-st_write(grid_real_sf, here("data", "grid_real_sf.geojson"))
+st_write(grid_real, here("data", "grid_real_sf.geojson"), append=FALSE)
 
 # Show displacement by morphing between layouts.
-displacement <- grid_real_sf %>%
+displacement <- grid_real |> 
   ggplot()+
   geom_sf(colour="#616161", size=0.15)+
   coord_sf(crs=27700, datum=NA)+
-  geom_text(aes(x=east, y=north, label= gsub("*\\|.", "\n ", name)),
+  geom_text(aes(x=x, y=y, label= gsub("*\\|.", "\n ", name_agg)),
              size=2.1, alpha=1, show.legend=FALSE, family="Avenir Book", colour="#000000")+
   gganimate::transition_states(type, 1, 2)+
   labs(title="Demonstrating grid layout of bikeshare villages for OD map",
-        subtitle="--Arrangement using SMWG LP",
-        caption="See: https://www.gicentre.net/smwg")+
+        subtitle="--Layout generated using `gridmappr` R package")+
   theme(axis.title.x=element_blank(), axis.title.y=element_blank())
 
 gganimate::animate(
   displacement, duration=5, fps=10, width=1600, height=1000, res=150,
   renderer=gganimate::gifski_renderer(here("figs", "anim_real_grid.gif"))
 )
-
 ```
 
 ## OD maps
@@ -257,7 +189,6 @@ arrangement using a map-within-map layout.
 
 ![Map-within-map layout for OD map](./figs/map_map.svg)
 
-
 In our implementation the large grid squares are bikeshare villages with an approximate geographic arrangement, and each represents a trip *destination*. Embedded in every larger cell is a map of bikeshare origins. The origin maps are then shaded according to a quantity of interest -- bikeability scores in the maps below. This means that each village–village OD pair is roughly equally
 visually salient, allowing detailed patterns in connected bikeability to be analysed concurrently.
 
@@ -266,9 +197,8 @@ visually salient, allowing detailed patterns in connected bikeability to be anal
 
 
 ```{r, map-map, eval=FALSE, echo=FALSE}
-
 # Fix some labelling problems.
-grid_real_sf <- grid_real_sf %>%
+grid_real <- grid_real %>% rename(name=name_agg) |> 
   mutate(
     name=case_when(
       name=="Waltham Green | West Chelsea" ~ "West Chelsea",
@@ -281,47 +211,54 @@ grid_real_sf <- grid_real_sf %>%
     )
   )
 
-
 rivers <- st_read(here("data", "river_buffer.geojson"))
+
 # Temporary plot object of data -- grid-within-grid.
-temp_ods <- grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
-  select(destination=name)
-temp_ods <- temp_ods %>%
-  mutate(origin=list(temp_ods %>% pull(destination))) %>%
+temp_ods <- grid_real |> filter(type=="real") |>  st_drop_geometry() |> 
+  select(destination=name) 
+temp_ods <- temp_ods |> 
+  mutate(origin=list(temp_ods %>% pull(destination))) |> 
   unnest(cols=origin)
 
-plot_data_temp <- grid_real_sf %>% filter(type=="real") %>%
-  rename(origin=name, o_x=x, o_y=y) %>%
-  right_join(temp_ods, by=c("origin"="origin")) %>%
-  left_join(grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
-              select(name,x,y), by=c("destination"="name")) %>%
-  rename(d_x=x, d_y=y)
+plot_data_temp <- grid_real %>% filter(type=="real") |> 
+  rename(origin=name, o_x=x, o_y=y) %>% select(-c(col, row)) |> 
+  right_join(temp_ods, by=c("origin"="origin")) |> 
+  left_join(grid_real |> filter(type=="real") |>  st_drop_geometry() |> 
+              select(name,x,y, col, row), by=c("destination"="name")) |> 
+  rename(d_x=col, d_y=row)
 
 # Identify locality in focus (edit this to switch between D-OD and O-DO matrix).
-plot_data_temp <- plot_data_temp %>% mutate(label=if_else(origin==destination,destination,""),
+plot_data_temp <- plot_data_temp |>  mutate(label=if_else(origin==destination,destination,""),
                                             focus=if_else(origin==destination,1,0))
 
-bbox_grid <- st_bbox(grid_real_sf %>% filter(type=="real"))
+# Rivers.
+temp <- plot_data_temp |> filter(focus==1) |> st_drop_geometry() |> 
+  mutate(geometry=rivers$geometry) |> 
+  st_as_sf(sf_column_name = "geometry")
+
+bbox_grid <- st_bbox(grid_real |>  filter(type=="real"))
 box_width <- bbox_grid$xmax-bbox_grid$xmin
 box_height <- bbox_grid$ymax-bbox_grid$ymin
 
-plot <- ggplot()+
-  geom_sf(data=plot_data_temp %>% group_by(destination) %>%
-            summarise(d_y=first(d_y), d_x=first(d_x)), colour="#616161", size=0.2)+
-  geom_sf(data=plot_data_temp, colour="#616161", size=0.05)+
-  geom_sf(data=plot_data_temp  %>% filter(focus==1), fill="white",  colour="#373737", size=0.05)+
-  geom_text(data=plot_data_temp %>% filter(focus==1),
-            aes(x=east, y=north, label=str_sub(label,1,1)), family="Avenir Book",
+plot <- 
+  plot_data_temp |>
+  ggplot()+
+   geom_sf(data=. %>% group_by(destination) %>%
+             summarise(d_y=first(d_y), d_x=first(d_x)), colour="#616161", size=0.2)+
+  geom_sf(colour="#616161", size=0.05)+
+  geom_sf(data=.  %>% filter(focus==1), fill="white",  colour="#373737", size=0.05)+
+  geom_text(data=. %>% filter(focus==1),
+            aes(x=x, y=y, label=str_sub(label,1,1)), family="Avenir Book",
             colour="#000000", alpha=1, size=1.5, show.legend=FALSE,
             hjust="centre", vjust="middle")+
-  geom_text(data=plot_data_temp %>% filter(focus==1),
+  geom_text(data=. %>% filter(focus==1),
             aes(x=bbox_grid$xmax, y=bbox_grid$ymin, label=gsub("*\\|.", "\n ", label)),
             family="Avenir Book", colour="#000000", alpha=1, size=1.8, show.legend=FALSE,
             hjust="right", vjust="bottom")+
   geom_sf(data=temp, size=0.15)+
   coord_sf(crs=st_crs(plot_data_temp), datum=NA)+
   labs(title="Map-within-map layout") +
-  facet_grid(d_y~d_x, shrink=FALSE)+
+  facet_grid(-d_y~d_x, shrink=FALSE)+
   theme(
     panel.spacing=unit(0.1, "lines"),
     axis.title.x=element_blank(),axis.title.y=element_blank(),
@@ -330,20 +267,18 @@ plot <- ggplot()+
     panel.background = element_rect(fill="#ffffff", colour="#ffffff"),
     plot.background = element_rect(fill="#eeeeee", colour = NA)
   )
+ggsave(here("figs", "map_map.svg"), plot=plot,width=13.5, height=7.2)
 ```
 
 
 ```{r, od-map-index, eval=FALSE, echo=FALSE}
-
 # Association with commuter counts.
-bikeability <- read_csv(here("data","connected_bikeability_index.csv")) %>%
-  rename(
-    o_village=start_bv_name,
-    d_village=end_bv_name
-  )
+bikeability <- read_csv(here("data","simulated_data.csv")) |> 
+  group_by(o_village, d_village) |> 
+  summarise(index=mean(index))
+# Fix some labelling problems.
 
-# Fix some labelling problems
-bikeability <- bikeability %>%
+bikeability <- bikeability |> 
   mutate(
     o_village=case_when(
       o_village=="Waltham Green | West Chelsea" ~ "West Chelsea",
@@ -363,42 +298,31 @@ bikeability <- bikeability %>%
       d_village=="Blackwell | Poplar" ~ "Poplar | Blackwell",
       TRUE ~ d_village
     )
-
   )
 
-  plot_data_temp <- grid_real_sf %>% filter(type=="real") %>%
-  right_join(ods_full %>% left_join(bikeability),
-             bikeability, by=c("name"="o_village")) %>%
-  mutate(o_village=name) %>% rename(o_x=x, o_y=y) %>%
-  left_join(grid_real_sf %>% filter(type=="real") %>% st_drop_geometry() %>%
-              select(name,x,y), by=c("d_village"="name")
-  ) %>%
-  rename(d_x=x, d_y=y) %>%
+plot_data_temp <- grid_real |>  filter(type=="real") |>  select(-c(col,row)) |> 
+    right_join(temp_ods |> rename(d_village=destination, o_village=origin) |>  left_join(bikeability),
+             bikeability, by=c("name"="o_village")) |> 
+  mutate(o_village=name) |>  rename(o_x=x, o_y=y) |> 
+  left_join(grid_real |>  filter(type=="real") |>  st_drop_geometry() |> 
+              select(name,col,row), by=c("d_village"="name")
+  ) |> 
+  rename(d_x=col, d_y=row) |> 
   # Identify village in focus (edit this to switch between D-OD and O-DO matrix).
   mutate(label=if_else(o_village==d_village,d_village,""),
          focus=if_else(o_village==d_village,1,0))
 
 
 # Bounding box for positioning text labels.
-bbox_grid <- st_bbox(grid_real_sf %>% filter(type=="real"))
+bbox_grid <- st_bbox(grid_real |>  filter(type=="real"))
 
-# Rivers.
-temp <- plot_data_temp %>%
-  filter(focus==1) %>%
-  st_drop_geometry() %>%
-  mutate(geometry=rivers$geometry) %>%
-  st_as_sf(sf_column_name = "geometry")
-
-plot <- plot_data_temp %>%
+plot <- plot_data_temp |> 
   ggplot()+
-
   geom_sf(data=. %>% group_by(d_village) %>%
             summarise(d_y=first(d_y), d_x=first(d_x)), colour="#616161", size=0.2)+
-
-  geom_sf(data=. %>% filter(d_village!=o_village),aes(fill=bv_od_cb_index), colour="#616161", size=0.05)+
-
+  geom_sf(data=. %>% filter(d_village!=o_village),aes(fill=index), colour="#616161", size=0.05)+
   geom_text(data=plot_data_temp %>% filter(focus==1),
-            aes(x=east, y=north, label=str_sub(label,1,1)),
+            aes(x=o_x, y=o_y, label=str_sub(label,1,1)),
             colour="#252525", alpha=0.9, size=1.5, show.legend=FALSE,
             hjust="centre", vjust="middle")+
   geom_text(data=plot_data_temp %>% filter(focus==1),
@@ -408,7 +332,7 @@ plot <- plot_data_temp %>%
   geom_sf(data=temp, size=0, fill="#252525", alpha=.7)+
   coord_sf(crs=st_crs(plot_data_temp), datum=NA)+
   guides(fill=FALSE)+
-  facet_grid(d_y~d_x, shrink=FALSE)+
+  facet_grid(-d_y~d_x, shrink=FALSE)+
   scale_fill_distiller(palette="PuBu", direction=1, na.value="#f7f7f7")+
   labs(title="Connected bikeability index", subtitle="-- Large cells are destinations, small maps origins") +
   theme(
@@ -420,5 +344,5 @@ plot <- plot_data_temp %>%
     plot.background = element_rect(fill="#eeeeee", colour = NA)
   )
 
-
+ggsave(here("figs", "index.svg"), plot=plot,width=13.5, height=7.2)
 ```

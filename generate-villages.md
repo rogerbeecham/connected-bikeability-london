@@ -28,8 +28,8 @@ pkgs <- c("tidyverse","sf", "here", "gganimate")
 # If not already installed.
 # install.packages(pkgs)
 # Core packages
-library(tidyverse)              # Bundle of packages for data manipulation.
-library(sf)                     # For working with geospatial data.
+library(tidyverse)              
+library(sf)                     
 
 # ggplot theme for paper
 source(here("code","theme_paper.R"))
@@ -49,68 +49,24 @@ First load villages and their corresponding centroids from
 
 ``` r
 # Localities from https://github.com/jwoLondon/mobv.
-localities <- st_read(here("data", "localities.geojson"), crs=27700) %>%
-  left_join(read_csv(here("data", "locality_centroids.csv")) %>% select(name, region))
+localities <- st_read(here("data", "localities.geojson"), crs=27700) |> 
+  left_join(read_csv(here("data", "locality_centroids.csv")) |>  select(name, region))
 
-locality_centroids <- read_csv(here("data", "locality_centroids.csv")) %>%
-  st_as_sf(coords=c("lon","lat"), crs=4326) %>%
-  st_transform(crs=27700) %>%
-  st_coordinates() %>%
-  as_tibble() %>%
-  bind_cols(localities %>% st_drop_geometry() %>% select(name, region)) %>%
-  rename(easting=X, northing=Y) %>%
+locality_centroids <- read_csv(here("data", "locality_centroids.csv")) |> 
+  st_as_sf(coords=c("lon","lat"), crs=4326) |> 
+  st_transform(crs=27700) |> 
+  st_coordinates() |> 
+  as_tibble() |> 
+  bind_cols(localities |>  st_drop_geometry() |>  select(name, region)) |> 
+  rename(easting=X, northing=Y) |> 
   relocate(name, .before=easting)
 ```
 
 ## Aggregate [jwoLondon](https://github.com/jwoLondon/mobv/blob/master/data/london/geo/localities.json) villages
 
 Then we manually aggregate selected localities and create new centroids
-for those aggregated localities.
-
-``` r
-localities_agg <- locality_centroids %>%
-  mutate(name_agg = case_when(
-    name == "Putney" ~ "Putney | Wandsworth",
-    name == "Wandsworth" ~ "Putney | Wandsworth",
-    name == "Wandsworth Road" ~ "Stockwell | Wandsworth Road",
-    name == "Stockwell" ~ "Stockwell | Wandsworth Road",
-    name == "Vauxhall" ~ "Vauxhall | Kennington",
-    name == "Kennington" ~ "Vauxhall | Kennington",
-    name ==  "Elephant & Castle" ~ "Elephant & Castle | Walworth",
-    name ==  "Borough" ~ "Borough | Bermondsey",
-    name ==  "Bermondsey" ~ "Borough | Bermondsey",
-    name ==  "Walworth" ~ "Elephant & Castle | Walworth",
-    name ==  "Waterloo" ~ "Waterloo | South Bank",
-    name ==  "South Bank" ~ "Waterloo | South Bank",
-    name ==  "Southwark" ~ "Southwark | Bankside",
-    name ==  "Bankside" ~ "Southwark | Bankside",
-    name ==  "Millwall" ~ "Millwall | Cubitt Town",
-    name ==  "Cubitt Town" ~ "Millwall | Cubitt Town",
-    name ==  "Blackwall" ~ "Blackwall | Poplar",
-    name ==  "Poplar" ~ "Blackwall | Poplar",
-    name ==  "Bow" ~ "Bow | Old Ford",
-    name ==  "Old Ford" ~ "Bow | Old Ford",
-    name ==  "Stepney" ~ "Stepney | Shadwell",
-    name ==  "Shadwell" ~ "Stepney | Shadwell",
-    name ==  "Finsbury" ~ "Finsbury | St Luke's",
-    name ==  "St Luke's" ~ "Finsbury | St Luke's",
-    name ==  "Covent Garden" ~ "Covent Garden | Strand",
-    name ==  "Strand" ~ "Covent Garden | Strand",
-    name == "Bloomsbury" ~ "Bloomsbury | Fitzrovia",
-    name == "Fitzrovia" ~ "Bloomsbury | Fitzrovia",
-    name == "Bayswater" ~ "Bayswater | Paddington",
-    name == "Paddington" ~ "Bayswater | Paddington",
-    name == "Notting Hill" ~ "Notting Hill | Ladbroke Grove",
-    name == "Ladbroke Grove" ~ "Notting Hill | Ladbroke Grove",
-    name == "Sands End" ~ "Sands End | Parson's Green",
-    name == "Parson's Green" ~ "Sands End | Parson's Green",
-    name == "Victoria" ~ "Victoria | Pimlico",
-    name == "Pimlico" ~ "Victoria | Pimlico",
-    TRUE ~ name
-  )) %>%
-  group_by(name_agg) %>%
-  summarise(easting=mean(easting), northing=mean(northing), region=first(region))
-```
+for those aggregated localities. Code hidden for brevity, but can be
+viewed in [generate-villages.Rmd](generate-villages.Rmd).
 
 Next we create a voronoi tessellation around our new localities.
 
