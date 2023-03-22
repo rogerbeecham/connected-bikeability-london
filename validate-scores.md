@@ -44,7 +44,8 @@ Please cite:
 Beecham, R., Yang, Y., Tait, C. and Lovelace, R. (2023) “Connected
 bikeability in London: which localities are better connected by bike and
 does this matter?”, *Environment & Planning B: Urban Analytics and City
-Science*. DOI: [osf.io/gbfz8](https://osf.io/gbfz8).
+Science*. DOI:
+[10.1177/23998083231165122](https://doi.org/10.1177/23998083231165122).
 
 ## Setup
 
